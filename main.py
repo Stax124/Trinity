@@ -8,6 +8,8 @@ import pytz
 import random
 import time
 import platform
+import argparse
+import shlex
 import traceback
 from discord.ext import commands
 from discord.ext.commands.context import Context
@@ -399,7 +401,20 @@ class Money(commands.Cog):
         try:
             if type in config["upgrade"].keys():
                 if config["players"][ctx.author.id]["upgrade"][type] + int(value) <= config["players"][ctx.author.id]["maxupgrade"][type]:
-                    cost = config["upgrade"][type]["cost"] * int(value)
+
+                    discount = 0
+                    for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                        item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                        if item["discount"] != None:
+                            if type == item["discount"]:
+                                discount += item["discount_percent"]
+
+                    if discount > 100:
+                        discount = 100
+
+                    discount = discount * 0.01
+
+                    cost = (config["upgrade"][type]["cost"] - config["upgrade"][type]["cost"] * discount) * int(value)
                     if config.config["players"][ctx.author.id]["balance"] >= cost:
                         role_list = []
                         for role in ctx.author.roles:
@@ -445,7 +460,7 @@ class Money(commands.Cog):
                             else:
                                 embed = discord.Embed(
                                     colour = discord.Colour.from_rgb(255,255,0),
-                                    description = f"✅ Bought {value}x {type} for {cost:,}{config['currency_symbol']}".replace(",", " ")
+                                    description = f"✅ Bought {value}x {type} for `{cost:,}{config['currency_symbol']}`\nDiscount: `{discount*100}%`".replace(",", " ")
                                 )
                                 embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                                 await ctx.send(embed=embed)
@@ -553,11 +568,11 @@ class Income(commands.Cog):
     @commands.command(name="income", help="Shows your income: income")
     async def income(self, ctx: Context):
         try:
-            money = 0
+            income = 0
             for role in ctx.author.roles:
                 try:
-                    if config.config["income"][role.id] != 0:
-                        money += config.config["income"][role.id]
+                    if config["income"][role.id] != 0:
+                        income += config.config["income"][role.id]
                     else:
                         print_timestamp(f"Excluding: {role.name}")
                 except:
@@ -568,9 +583,19 @@ class Income(commands.Cog):
                     embed.set_author(name="Income", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
 
+            income_multiplier = 1
+            for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                income_multiplier = income_multiplier * (item["income_percent"] / 100)
+
+            income_boost = 0
+            for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                income_boost += item["income"]
+
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = f"Income: `{money:,}{config['currency_symbol']}`".replace(",", " ")
+                description = f"Income: `{(income*income_multiplier)+income_boost:,}{config['currency_symbol']}`\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`".replace(",", " ")
             )
             embed.set_author(name="Income", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
@@ -995,6 +1020,8 @@ class Development(commands.Cog):
         try:
             message = list(message)
             result = exec(" ".join(message))
+            if result != None:
+                await ctx.send(result)
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -1024,7 +1051,7 @@ class Settings(commands.Cog):
             except:
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"No name specified"
+                    description = f"❌ No name specified"
                 )
                 embed.set_author(name="Add item", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
@@ -1034,7 +1061,7 @@ class Settings(commands.Cog):
             except:
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"No cost specified"
+                    description = f"❌ No cost specified"
                 )
                 embed.set_author(name="Add item", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
@@ -1055,7 +1082,7 @@ class Settings(commands.Cog):
 
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = f"Added: `{item}`\nMaximum: {maximum}\nIncome: {income}\nCost: {cost}"
+                description = f"✅ Added: `{item}`\nMaximum: {maximum}\nIncome: {income}\nCost: {cost}"
             )
             embed.set_author(name="Add item", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
@@ -1074,7 +1101,7 @@ class Settings(commands.Cog):
             except:
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"No name specified"
+                    description = f"❌ No name specified"
                 )
                 embed.set_author(name="Remove item", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
@@ -1089,7 +1116,7 @@ class Settings(commands.Cog):
 
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = f"Sucessfully removed `{item}`"
+                description = f"✅ Sucessfully removed `{item}`"
             )
             embed.set_author(name="Remove item", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
@@ -1104,7 +1131,7 @@ class Settings(commands.Cog):
         try:
             config.config["prefix"] = prefix
             config.save()
-            commands.command_prefix = prefix
+            bot.command_prefix = prefix
             print_timestamp(f"Prefix changed to {config['prefix']}")
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
@@ -1115,6 +1142,8 @@ class Settings(commands.Cog):
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
+
+        await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}"))
 
     @commands.command(name="deltatime", help="Sets time between allowed !work commands: deltatime <value: integer>", pass_context=True)
     @commands.has_any_role(*config["admin_role_name"])
@@ -1387,11 +1416,20 @@ class PlayerShop(commands.Cog):
     @commands.command(name="player-sell", help="Sell items: player-sell <item: str> <price: int>")
     async def player_sell(self, ctx: Context, item: str, price: int):
         try:
+            if not item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"{item} not found in your inventory"
+                )
+                embed.set_author(name="Sell", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
             config["players"][ctx.author.id]["custom_shop"]["shop"] = {**config["players"][ctx.author.id]["custom_shop"]["shop"], **{item: price}}
 
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = f"Added: `{item}`\nPrice: {price}"
+                description = f"✅ Name: `{item}`\nPrice: {price}"
             )
             embed.set_author(name="Sell", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
@@ -1406,13 +1444,10 @@ class PlayerShop(commands.Cog):
         try:
             cost = config["players"][user.id]["custom_shop"]["shop"][item] * count
             if config["players"][ctx.author.id]["balance"] >= cost:
-                try:
-                    config["players"][ctx.author.id]["custom_shop"]["inventory"][item] += count
-                except KeyError:
-                    config["players"][ctx.author.id]["custom_shop"]["inventory"][item] = count
-
+                config["players"][ctx.author.id]["custom_shop"]["inventory"][item] = config["players"][user.id]["custom_shop"]["shop"][item]
                 config["players"][ctx.author.id]["balance"] -= cost
                 config["players"][user.id]["balance"] += cost
+                del config["players"][user.id]["custom_shop"]["shop"][item]
 
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
@@ -1470,7 +1505,60 @@ class PlayerShop(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
+    @commands.command(name="add-player-item", help="Add new item to players inventory")
+    async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
+        fparser = argparse.ArgumentParser()
+        fparser.add_argument("name", type=str)
+        fparser.add_argument("--income", type=int, default=0)
+        fparser.add_argument("--income_percent", type=int, default=100)
+        fparser.add_argument("--discount", type=str, default=None)
+        fparser.add_argument("--discount_percent", type=int, default=0)
+        fparser.add_argument("--description", type=str, default=None)
 
+        querry = shlex.split(" ".join(querry))
+
+        try:
+            fargs = fparser.parse_args(querry)
+        except SystemExit:
+            return
+
+        config["players"][ctx.author.id]["custom_shop"]["inventory"][fargs.name] = {
+            "description": fargs.description,
+            "income": fargs.income,
+            "income_percent": fargs.income_percent,
+            "discount": fargs.discount,
+            "discount_percent": fargs.discount_percent
+        }
+
+        embed=discord.Embed(title=fargs.name, description=fargs.description, color=0xffff00)
+        embed.set_author(name=bot.user.name, icon_url=bot.user.avatar_url)
+        embed.add_field(name="Income", value=fargs.income, inline=True)
+        embed.add_field(name="Income %", value=fargs.income_percent, inline=True)
+        embed.add_field(name="Discount", value=fargs.discount, inline=True)
+        embed.add_field(name="Discount %", value=fargs.discount_percent, inline=True)
+        await ctx.send(embed=embed)
+
+        config.save()
+
+    @commands.command(name="remove-player-item", help="Remove item from players inventory")
+    async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
+        if item in config["players"][user.id]["custom_shop"]["inventory"]:
+            del config["players"][user.id]["custom_shop"]["inventory"][item]
+
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"✅ Removed {item} from <@{user.id}>´s inventory"
+            )
+            embed.set_author(name="Remove player item", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"❌ {item} not found in <@{user.id}>´s inventory"
+            )
+            embed.set_author(name="Remove player item", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        config.save()
 
 bot.add_cog(Money())
 bot.add_cog(Income())
