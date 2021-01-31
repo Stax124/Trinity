@@ -27,6 +27,14 @@ class c:
     bold = '\033[1m'
     underline = '\033[4m'
 
+class rarity(object):
+    common = 0xABABAB
+    uncommon = 0x12CC00
+    rare = 0x009DE3
+    epic = 0x8C25FF
+    legendary = 0xFF8F00
+    event = 0xFF0000
+
 members = []
 
 def jsonKeys2int(x):
@@ -1472,7 +1480,7 @@ class PlayerShop(commands.Cog):
 
         config.save()
 
-    @commands.command(name="inventory", help="Shows your 'realy usefull' items in your inventory: inventory")
+    @commands.command(name="inventory", help="Shows your 'realy usefull' items in your inventory: inventory", aliases=["inv","backpack","loot"])
     async def inventory(self, ctx: Context):
         try:
             e_list = []
@@ -1480,12 +1488,13 @@ class PlayerShop(commands.Cog):
             last = len(config["players"][ctx.author.id]["custom_shop"]["inventory"])
             for name in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
                 item = config["players"][ctx.author.id]["custom_shop"]["inventory"][name]
-                embed=discord.Embed(title=name, description=item["description"], color=0xffff00)
+                embed=discord.Embed(title=name, description=item["description"], color=rarity.__dict__[item["rarity"]])
                 embed.set_author(name="Inventory" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
                 embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
                 embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
                 embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
                 embed.add_field(name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
+                embed.add_field(name="Rarity", value=item["rarity"], inline=True)
                 e_list.append(embed)
                 index += 1
 
@@ -1496,11 +1505,12 @@ class PlayerShop(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name")
+    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name rarity")
     @commands.has_any_role(*config["admin_role_name"])
     async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
+        fparser.add_argument("rarity", choices=["common","uncommon","rare","epic","legendary","event"], type=str)
         fparser.add_argument("--income", type=int, default=0)
         fparser.add_argument("--income_percent", type=int, default=100)
         fparser.add_argument("--discount", type=str, default=None)
@@ -1516,23 +1526,25 @@ class PlayerShop(commands.Cog):
 
         config["players"][ctx.author.id]["custom_shop"]["inventory"][fargs.name] = {
             "description": fargs.description,
+            "rarity": fargs.rarity,
             "income": fargs.income,
             "income_percent": fargs.income_percent,
             "discount": fargs.discount,
             "discount_percent": fargs.discount_percent
         }
 
-        embed=discord.Embed(title=fargs.name, description=fargs.description, color=0xffff00)
-        embed.set_author(name=bot.user.name, icon_url=bot.user.avatar_url)
+        embed=discord.Embed(title=fargs.name, description=fargs.description, color=rarity.__dict__[fargs.rarity])
+        embed.set_author(name="Succesfully added to inventory", icon_url=bot.user.avatar_url)
         embed.add_field(name="Income", value=fargs.income, inline=True)
         embed.add_field(name="Income %", value=fargs.income_percent, inline=True)
         embed.add_field(name="Discount", value=fargs.discount, inline=True)
         embed.add_field(name="Discount %", value=fargs.discount_percent, inline=True)
+        embed.add_field(name="Rarity", value=fargs.rarity, inline=True)
         await ctx.send(embed=embed)
 
         config.save()
 
-    @commands.command(name="remove-player-item", help="Remove item from players inventory")
+    @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
     @commands.has_any_role(*config["admin_role_name"])
     async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
         if item in config["players"][user.id]["custom_shop"]["inventory"]:
@@ -1552,6 +1564,7 @@ class PlayerShop(commands.Cog):
             embed.set_author(name="Remove player item", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
         config.save()
+
 
 bot.add_cog(Money())
 bot.add_cog(Income())
