@@ -160,8 +160,12 @@ async def on_ready():
             config.config["players"][member.id] = {}
             config.config["players"][member.id]["balance"] = config["default_balance"]
             config.config["players"][member.id]["last-work"] = 0
+            config.config["players"][member.id]["manpower"] = 0
             config.config["players"][member.id]["upgrade"] = {}
             config.config["players"][member.id]["maxupgrade"] = {}
+            config.config["players"][member.id]["custom_shop"] = {}
+            config.config["players"][member.id]["custom_shop"]["inventory"] = {}
+            config.config["players"][member.id]["custom_shop"]["shop"] = {}
             
             for item in list(config["upgrade"].keys()):
                 print_timestamp(f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
@@ -196,6 +200,7 @@ async def on_member_join(member: discord.Member):
         config.config["players"][member.id] = {}
         config.config["players"][member.id]["balance"] = config["default_balance"]
         config.config["players"][member.id]["last-work"] = 0
+        config.config["players"][member.id]["manpower"] = 0
         config.config["players"][member.id]["upgrade"] = {}
         config.config["players"][member.id]["maxupgrade"] = {}
         config.config["players"][member.id]["custom_shop"] = {}
