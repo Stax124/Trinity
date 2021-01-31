@@ -255,11 +255,11 @@ class Money(commands.Cog):
     async def user_work(self, ctx: Context):
         try:
             if time.time() >= config["players"][ctx.author.id]["last-work"] + config["deltatime"]:
-                money = 0
+                income = 0
                 for role in ctx.author.roles:
                     if config.config["income"][role.id] != 0:
-                        money += config.config["income"][role.id]
-                if money <= 0:
+                        income += config.config["income"][role.id]
+                if income <= 0:
                     embed = discord.Embed(
                         colour = discord.Colour.from_rgb(255,255,0),
                         description = f"❌ You do not have income set, please ask admin to do so"
@@ -267,20 +267,32 @@ class Money(commands.Cog):
                     embed.set_author(name="Work", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
                 else:
+                    income_multiplier = 1
+                    for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                        item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                        income_multiplier = income_multiplier * (item["income_percent"] / 100)
+
+                    income_boost = 0
+                    for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                        item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                        income_boost += item["income"]
+
+                    income = (income*income_multiplier)+income_boost
+
                     rate = random.randrange(100-config["work_range"]*100,100+config["work_range"]*100) / 100 if config["work_range"] != 0 else 1
                     if config["players"][ctx.author.id]["last-work"] != 0:
                         timedelta = (time.time() - config["players"][ctx.author.id]["last-work"]) / config["deltatime"]
-                        config["players"][ctx.author.id]["balance"] += int(money * timedelta * rate)
+                        config["players"][ctx.author.id]["balance"] += int(income * timedelta * rate)
                         config["players"][ctx.author.id]["last-work"] = time.time()
                     else:
                         timedelta = 1
-                        config["players"][ctx.author.id]["balance"] += money
+                        config["players"][ctx.author.id]["balance"] += income
                         config["players"][ctx.author.id]["last-work"] = time.time()
 
                     print_timestamp(f"{c.bold}{ctx.author.display_name} ■ {ctx.author.id}{c.end} is working {c.warning}[timedelta={timedelta}, rate={rate}]{c.end}")
                     embed = discord.Embed(
                         colour = discord.Colour.from_rgb(255,255,0),
-                        description = f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*money*rate):,} {config['currency_symbol']}`. Next available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}".replace(",", " ")
+                        description = f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`".replace(",", " ")
                     )
                     embed.set_author(name="Work", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
