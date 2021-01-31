@@ -1506,6 +1506,7 @@ class PlayerShop(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="add-player-item", help="Add new item to players inventory")
+    @commands.has_any_role(*config["admin_role_name"])
     async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
@@ -1541,6 +1542,7 @@ class PlayerShop(commands.Cog):
         config.save()
 
     @commands.command(name="remove-player-item", help="Remove item from players inventory")
+    @commands.has_any_role(*config["admin_role_name"])
     async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
         if item in config["players"][user.id]["custom_shop"]["inventory"]:
             del config["players"][user.id]["custom_shop"]["inventory"][item]
