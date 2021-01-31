@@ -1390,33 +1390,25 @@ class PlayerShop(commands.Cog):
     "Sell stuff, buy stuff or do whatever your heart desires"
 
     @commands.command(name="player-shop", help="Show player shop: player-shop <player: discord.Member>")
-    async def player_shop(self, ctx: Context, player: discord.Member = None):
+    async def player_shop(self, ctx: Context, user: discord.Member = None):
         try:
+            if user == None:
+                user = ctx.author
+
             e_list = []
             index = 1
-            msg = ""
-            if player == None:
-                player = ctx.author
-            for item in config["players"][player.id]["custom_shop"]["shop"]:
-                msg += f'`{item}` | `Cost:` {config["players"][player.id]["custom_shop"]["shop"][item]:,}{config["currency_symbol"]}\n'.replace(",", " ")
-                if index == 30:
-                    embed = discord.Embed(
-                        colour = discord.Colour.from_rgb(255,255,0),
-                        description = msg
-                    )
-                    embed.set_author(name="Custom shop", icon_url=bot.user.avatar_url)
-                    e_list.append(embed)
-                    msg = ""
-                    index = 1
-                else:
-                    index += 1
-
-            embed = discord.Embed(
-                colour = discord.Colour.from_rgb(255,255,0),
-                description = msg
-            )
-            embed.set_author(name="Custom shop", icon_url=bot.user.avatar_url)
-            e_list.append(embed)
+            last = len(config["players"][user.id]["custom_shop"]["shop"])
+            for name in config["players"][user.id]["custom_shop"]["shop"]:
+                item = config["players"][user.id]["custom_shop"]["inventory"][name]
+                embed=discord.Embed(title=name, description=item["description"], color=0xffff00)
+                embed.set_author(name="Player shop" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
+                embed.add_field(name="Price", value=config["players"][user.id]["custom_shop"]["shop"][name], inline=False)
+                embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
+                embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
+                embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
+                embed.add_field(name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
+                e_list.append(embed)
+                index += 1
 
             paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
             paginator.remove_reactions = True
@@ -1452,9 +1444,9 @@ class PlayerShop(commands.Cog):
         config.save()
 
     @commands.command(name="player-buy", help="Sell items: player-buy <user: discord.Member> <item: str> <count: int>")
-    async def sell(self, ctx: Context, user: discord.Member, item: str, count: int):
+    async def sell(self, ctx: Context, user: discord.Member, item: str):
         try:
-            cost = config["players"][user.id]["custom_shop"]["shop"][item] * count
+            cost = config["players"][user.id]["custom_shop"]["shop"][item]
             if config["players"][ctx.author.id]["balance"] >= cost:
                 config["players"][ctx.author.id]["custom_shop"]["inventory"][item] = config["players"][user.id]["custom_shop"]["shop"][item]
                 config["players"][ctx.author.id]["balance"] -= cost
@@ -1463,7 +1455,7 @@ class PlayerShop(commands.Cog):
 
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"✅ Bought {count}x {item} for {cost:,}{config['currency_symbol']} and item was added to your inventory".replace(",", " ")
+                    description = f"✅ Bought {item} for {cost:,}{config['currency_symbol']} and item was added to your inventory".replace(",", " ")
                 )
                 embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
@@ -1483,32 +1475,19 @@ class PlayerShop(commands.Cog):
     @commands.command(name="inventory", help="Shows your 'realy usefull' items in your inventory: inventory")
     async def inventory(self, ctx: Context):
         try:
-            l = config["players"][ctx.author.id]["custom_shop"]["inventory"]
-            l = {k: v for k, v in sorted(l.items(), key=lambda item: item[1], reverse=True)}
-
             e_list = []
-            msg = ""
             index = 1
-            for name in l:
-                msg += f"`{name}` | {l[name]}\n"
-                if index == 30:
-                    embed = discord.Embed(
-                        colour = discord.Colour.from_rgb(255,255,0),
-                        description = msg
-                    )
-                    embed.set_author(name="Inventory", icon_url=bot.user.avatar_url)
-                    e_list.append(embed)
-                    msg = ""
-                    index = 1
-                else:
-                    index += 1
-
-            embed = discord.Embed(
-                colour = discord.Colour.from_rgb(255,255,0),
-                description = msg
-            )
-            embed.set_author(name="Inventory", icon_url=bot.user.avatar_url)
-            e_list.append(embed)
+            last = len(config["players"][ctx.author.id]["custom_shop"]["inventory"])
+            for name in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+                item = config["players"][ctx.author.id]["custom_shop"]["inventory"][name]
+                embed=discord.Embed(title=name, description=item["description"], color=0xffff00)
+                embed.set_author(name="Inventory" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
+                embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
+                embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
+                embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
+                embed.add_field(name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
+                e_list.append(embed)
+                index += 1
 
             paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
             paginator.remove_reactions = True
@@ -1517,7 +1496,7 @@ class PlayerShop(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="add-player-item", help="Add new item to players inventory")
+    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name")
     @commands.has_any_role(*config["admin_role_name"])
     async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
         fparser = argparse.ArgumentParser()
