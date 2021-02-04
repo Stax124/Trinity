@@ -71,6 +71,7 @@ Config: ```"deltatime": 10800```
 
 # Discord commands
 <h3>Config</h3>
+
 ```
 config                  Output config directory: config <path> [path]...
 config-load             Load configuration file: config-load
@@ -80,6 +81,7 @@ set                     Change values in config. You rather know what ya doin!: 
 ```
 
 <h3>Development</h3>
+
 ```
 execute                 Execute python code: execute <command>
 json-encode             Encode string to yaml format: json-encode <value: string>
@@ -88,6 +90,7 @@ reload                  Reload members and roles: reload
 ```
 
 <h3>Essentials</h3>
+
 ```
 members                 Show all members: members
 role                    Your roles: role
@@ -98,6 +101,7 @@ time                    Shows formated time: time
 ```
 
 <h3>Income</h3>
+
 ```
 add-income              Add income: add-income <role: discord.Role> <value: integer>
 income                  Shows your income: income
@@ -107,6 +111,7 @@ remove-income           Remove income: remove-income <role: discord.Role> <value
 ```
 
 <h3>Money</h3>
+
 ```
 add-money               Add money to target: add-money <user: discord.Member> <value: integer>
 balance                 Show your balance or more likely, empty pocket: b, bal, balance, money
@@ -119,6 +124,7 @@ work                    What are you doing, make some money!: work
 ```
 
 <h3>PlayerShop</h3>
+
 ```
 add-player-item         Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name rarity
 inventory               Shows your 'realy usefull' items in your inventory: inventory
@@ -129,6 +135,7 @@ remove-player-item      Remove item from players inventory: remove-player-item <
 ```
 
 <h3>Settings</h3>
+
 ```
 add-item                Add item to database: add-item <name: string> <cost: integer> <max: integer> [income: integer]
 bravo-six-going-dark    Deletes messages: bravo-six-going-dark <messages: integer>
@@ -138,6 +145,7 @@ shutdown                Show the bot, whos da boss: shutdown
 ```
 
 # License
+
 ```
 MIT License
 
