@@ -157,20 +157,29 @@ async def on_ready():
         if not member.id in config.config["players"]:
             members.append(member.id)
             print_timestamp(f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
-            config.config["players"][member.id] = {}
-            config.config["players"][member.id]["balance"] = config["default_balance"]
-            config.config["players"][member.id]["last-work"] = 0
-            config.config["players"][member.id]["manpower"] = 0
-            config.config["players"][member.id]["upgrade"] = {}
-            config.config["players"][member.id]["maxupgrade"] = {}
-            config.config["players"][member.id]["custom_shop"] = {}
-            config.config["players"][member.id]["custom_shop"]["inventory"] = {}
-            config.config["players"][member.id]["custom_shop"]["shop"] = {}
+            config["players"][member.id] = {}
+            config["players"][member.id]["balance"] = config["default_balance"]
+            config["players"][member.id]["last-work"] = 0
+            config["players"][member.id]["manpower"] = 0
+            config["players"][member.id]["upgrade"] = {}
+            config["players"][member.id]["maxupgrade"] = {}
+            config["players"][member.id]["custom_shop"] = {}
+            config["players"][member.id]["custom_shop"]["inventory"] = {}
+            config["players"][member.id]["custom_shop"]["shop"] = {}
+            config["players"][member.id]["stats"] = {
+                "diplomacy": 0,
+                "warlord": 0,
+                "intrique": 0,
+                "stewardship": 0,
+                "trading": 0,
+                "bartering": 0,
+                "learning": 0
+            }
             
             for item in list(config["upgrade"].keys()):
                 print_timestamp(f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
-                config.config["players"][member.id]["upgrade"][item] = 0
-                config.config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
+                config["players"][member.id]["upgrade"][item] = 0
+                config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
 
     for role in bot.guilds[0].roles:
         if not (role.id in roles):
@@ -191,6 +200,18 @@ async def on_message(message):
     if not message.author == bot.user:
         print_timestamp(f"{c.bold}{message.author.display_name} ■ {message.author.id}:{c.end} {c.okgreen}{message.content}{c.end}")
         await bot.process_commands(message)
+
+@bot.event
+async def on_guild_role_create(role):
+    config["income"][role.id] = 0
+    print(f"New role added: {role.name}")
+    config.save()
+
+@bot.event
+async def on_guild_role_delete(role):
+    del config["income"][role.id]
+    print(f"Role removed: {role.name}")
+    config.save()
 
 @bot.event
 async def on_member_join(member: discord.Member):
@@ -425,8 +446,11 @@ class Money(commands.Cog):
     async def buy_upgrade(self, ctx: Context, type: str, value: int):
         try:
             if type in config["upgrade"].keys():
-                if config["players"][ctx.author.id]["upgrade"][type] + int(value) <= config["players"][ctx.author.id]["maxupgrade"][type]:
-
+                try:
+                    call = config["players"][ctx.author.id]["upgrade"][type] + int(value) <= config["players"][ctx.author.id]["maxupgrade"][type]
+                except:
+                    call = True
+                if config["upgrade"][type] == None or call:
                     discount = 0
                     for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
                         item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
@@ -473,8 +497,12 @@ class Money(commands.Cog):
                             config.save()
                         else:
                             config.config["income"][role_list[0]] += config["upgrade"][type]["income"] * int(value)
-                            config["players"][ctx.author.id]["upgrade"][type] += int(value)
+
+                            if config["players"][ctx.author.id]["maxupgrade"][type] != None:
+                                config["players"][ctx.author.id]["upgrade"][type] += int(value)
+
                             config.config["players"][ctx.author.id]["balance"] -= config["upgrade"][type]["cost"] * int(value)
+                            config.config["players"][ctx.author.id]["manpower"] += int(value) * (config["upgrade"][type]["manpower"] if "manpower" in config["upgrade"][type] else 0)
                             if config["upgrade"][type]["income"] != 0:
                                 embed = discord.Embed(
                                     colour = discord.Colour.from_rgb(255,255,0),
@@ -1068,55 +1096,39 @@ class Settings(commands.Cog):
         print_timestamp("Shutting down...")
         sys.exit()
 
-    @commands.command(name="add-item", pass_context=True, help="Add item to database: add-item <name: string> <cost: integer> <max: integer> [income: integer]")
+    @commands.command(name="add-item", pass_context=True, help="Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] name cost")
     @commands.has_any_role(*config["admin_role_name"])
-    async def add_item(self, ctx: Context, *message):
+    async def add_item(self, ctx: Context, *querry):
+        fparser = argparse.ArgumentParser()
+        fparser.add_argument("name", type=str)
+        fparser.add_argument("cost", type=int)
+        fparser.add_argument("--maxupgrade", type=int, default=None)
+        fparser.add_argument("--income", type=int, default=0)
+        fparser.add_argument("--manpower", type=int, default=0)
+
+        querry = shlex.split(" ".join(querry))
+
         try:
-            try: item = message[0]
-            except:
-                embed = discord.Embed(
-                    colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"❌ No name specified"
-                )
-                embed.set_author(name="Add item", icon_url=bot.user.avatar_url)
-                await ctx.send(embed=embed)
-                return
+            fargs = fparser.parse_args(querry)
+        except SystemExit:
+            return
 
-            try: cost = int(message[1])
-            except:
-                embed = discord.Embed(
-                    colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"❌ No cost specified"
-                )
-                embed.set_author(name="Add item", icon_url=bot.user.avatar_url)
-                await ctx.send(embed=embed)
-                return
+        for member in config.config["players"]:
+            config["players"][member]["maxupgrade"] = {**config["players"][member]["maxupgrade"], **{fargs.name: fargs.maxupgrade}}
+            config["players"][member]["upgrade"] = {**config["players"][member]["upgrade"], **{fargs.name: 0}}
+        
+        config["upgrade"] = {**config["upgrade"], **{fargs.name: {"cost": fargs.cost,"income": fargs.income, "manpower": fargs.manpower}}}
+        config["maxupgrade"] = {**config["maxupgrade"], **{fargs.name: fargs.maxupgrade}}
 
-            try: maximum = int(message[2])
-            except: maximum = 0
-
-            try: income = int(message[3])
-            except: income = 0
-
-            for member in config.config["players"]:
-                config["players"][member]["maxupgrade"] = {**config["players"][member]["maxupgrade"], **{item: maximum}}
-                config["players"][member]["upgrade"] = {**config["players"][member]["upgrade"], **{item: 0}}
-            
-            config["upgrade"] = {**config["upgrade"], **{item: {"cost": cost,"income": income}}}
-            config["maxupgrade"] = {**config["maxupgrade"], **{item: maximum}}
-
-            embed = discord.Embed(
-                colour = discord.Colour.from_rgb(255,255,0),
-                description = f"✅ Added: `{item}`\nMaximum: {maximum}\nIncome: {income}\nCost: {cost}"
-            )
-            embed.set_author(name="Add item", icon_url=bot.user.avatar_url)
-            await ctx.send(embed=embed)
-            
-            config.save()
-
-        except:
-            print(traceback.format_exc())
-            await ctx.send(traceback.format_exc())
+        embed=discord.Embed(title=fargs.name, color=0xffff00)
+        embed.set_author(name="Succesfully added to inventory", icon_url=bot.user.avatar_url)
+        embed.add_field(name="Cost", value=fargs.cost, inline=True)
+        embed.add_field(name="Maximum", value=fargs.maxupgrade, inline=True) if fargs.maxupgrade != None else None
+        embed.add_field(name="Income", value=fargs.income, inline=True) if fargs.income != 0 else None
+        embed.add_field(name="Manpower", value=fargs.manpower, inline=True) if fargs.manpower != 0 else None
+        await ctx.send(embed=embed)
+        
+        config.save()
 
     @commands.command(name="remove-item", pass_context=True, help="Remove item from database: remove-item <name: string>")
     @commands.has_any_role(*config["admin_role_name"])
@@ -1294,35 +1306,12 @@ class Essentials(commands.Cog):
     @commands.command(name="limits", help="Shows upgrade limits for your account: limits")
     async def limits(self, ctx: Context):
         try:
-            l = config["players"][ctx.author.id]["maxupgrade"]
-
-            e_list = []
-            msg = ""
-            index = 1
-            for name in l:
-                msg += f"{index}. {name} `{l[name]}`\n"
-                if index == 30:
-                    embed = discord.Embed(
-                        colour = discord.Colour.from_rgb(255,255,0),
-                        description = msg
-                    )
-                    embed.set_author(name="Limits", icon_url=bot.user.avatar_url)
-                    e_list.append(embed)
-                    msg = ""
-                    index = 1
-                else:
-                    index += 1
-
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = msg
+                description = f"Limits is deprecated, use {config['prefix']}shop instead"
             )
             embed.set_author(name="Limits", icon_url=bot.user.avatar_url)
-            e_list.append(embed)
-
-            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
-            paginator.remove_reactions = True
-            await paginator.run(e_list)
+            await ctx.send(embed=embed)
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -1330,15 +1319,9 @@ class Essentials(commands.Cog):
     @commands.command(name="upgrades", help="Shows the current number of upgrades bought: upgrades")
     async def upgrades(self, ctx: Context):
         try:
-            l = config["players"][ctx.author.id]["upgrade"]
-            msg = ""
-            index = 1
-            for name in l:
-                msg += f"{index}. {name} `{l[name]}`\n"
-                index += 1
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = msg
+                description = f"Upgrades is deprecated, use {config['prefix']}shop instead"
             )
             embed.set_author(name="Upgrades", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
@@ -1371,7 +1354,9 @@ class Essentials(commands.Cog):
             index = 1
             msg = ""
             for item in config["upgrade"]:
-                msg += f'`{item}` {config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]} `Cost:` {config["upgrade"][item]["cost"]:,}{config["currency_symbol"]}\n'.replace(",", " ")
+                manpower = f'`Manpower:` {config["upgrade"][item]["manpower"]}' if "manpower" in config["upgrade"][item] else ""
+                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config["players"][ctx.author.id]["maxupgrade"][item] != None else "Not limited"
+                msg += f'`{item}` {stock} `Cost:` {config["upgrade"][item]["cost"]:,}{config["currency_symbol"]} {manpower}\n'.replace(",", " ")
                 if index == 30:
                     embed = discord.Embed(
                         colour = discord.Colour.from_rgb(255,255,0),
@@ -1393,6 +1378,22 @@ class Essentials(commands.Cog):
             paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
             paginator.remove_reactions = True
             await paginator.run(e_list)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="manpower", help="Show manpower of user", aliases=["mp","power"])
+    async def manpower(self, ctx: Context, user: discord.Member = None):
+        try:
+            if user == None:
+                user = ctx.author
+
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"Manpower of <@{user.id}> is {config['players'][user.id]['manpower']:,}".replace(",", " ")
+            )
+            embed.set_author(name="Manpower", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -1503,6 +1504,15 @@ class PlayerShop(commands.Cog):
                 e_list.append(embed)
                 index += 1
 
+            if e_list == []:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"❌ Nothing in inventory"
+                )
+                embed.set_author(name="Inventory", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
             paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
             paginator.remove_reactions = True
             await paginator.run(e_list)
@@ -1529,7 +1539,7 @@ class PlayerShop(commands.Cog):
         except SystemExit:
             return
 
-        config["players"][ctx.author.id]["custom_shop"]["inventory"][fargs.name] = {
+        config["players"][user.id]["custom_shop"]["inventory"][fargs.name] = {
             "description": fargs.description,
             "rarity": fargs.rarity,
             "income": fargs.income,
@@ -1571,6 +1581,31 @@ class PlayerShop(commands.Cog):
         config.save()
 
 
+class Player(commands.Cog):
+    @commands.command(name="stats", help="Show player shop: player-shop <player: discord.Member>")
+    async def stats(self, ctx: Context):
+        try:
+            player = config["players"][ctx.author.id]["stats"]
+
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"""
+Diplomacy: {player["diplomacy"]}
+Warlord: {player["warlord"]}
+Intrique: {player["intrique"]}
+Stewardship: {player["stewardship"]}
+Trading: {player["trading"]}
+Bartering: {player["bartering"]}
+Learning: {player["learning"]}
+"""
+            )
+            embed.set_author(name="Stats", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+
 bot.add_cog(Money())
 bot.add_cog(Income())
 bot.add_cog(Essentials())
@@ -1578,5 +1613,6 @@ bot.add_cog(Config())
 bot.add_cog(Development())
 bot.add_cog(Settings())
 bot.add_cog(PlayerShop())
+bot.add_cog(Player())
 
 bot.run(os.environ["TRINITY"])
