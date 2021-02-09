@@ -12,7 +12,7 @@ import argparse
 import shlex
 import traceback
 from io import StringIO
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord.ext.commands.context import Context
 from discord.utils import get
 from pretty_help import PrettyHelp
@@ -171,10 +171,51 @@ config.load()
 
 ADMIN = config["admin_role_name"]
 
-bot = commands.Bot(command_prefix=config["prefix"], help_command=PrettyHelp(color=discord.Colour.from_rgb(255,255,0), show_index=True, sort_commands=True))
+bot = commands.Bot(command_prefix=commands.when_mentioned_or(config["prefix"]), help_command=PrettyHelp(color=discord.Colour.from_rgb(255,255,0), show_index=True, sort_commands=True))
 
 members = list(config["players"].keys())
 roles = list(config["income"].keys())
+
+btime = config.config["backup_time"]
+
+@tasks.loop(seconds=btime)
+async def backup():
+    if not os.path.exists("./backups"):
+        os.mkdir("./backups")
+
+    files = os.listdir("./backups")
+
+    if not files == []:
+        files = [int(x) for x in files]
+        files.sort(reverse=True)
+        if len(files) >= config["backups"]:
+            print_timestamp(f"Deleting {files[-1]}")
+            os.remove("./backups/"+str(files[-1]))
+            try:
+                print_timestamp("Saving backup")
+                with open("./backups/"+str(int(time.time())), "w") as f:
+                    json.dump(config.config, f, indent=4)
+            except:
+                print_timestamp(traceback.format_exc())
+                print_timestamp(f"Unable to save data to {config.CONFIG}")
+        else:
+            try:
+                print_timestamp("Saving backup")
+                with open("./backups/"+str(int(time.time())), "w") as f:
+                    json.dump(config.config, f, indent=4)
+            except:
+                print_timestamp(traceback.format_exc())
+                print_timestamp(f"Unable to save data to {config.CONFIG}")
+    else:
+        try:
+            print_timestamp("Saving backup")
+            with open("./backups/"+str(int(time.time())), "w") as f:
+                json.dump(config.config, f, indent=4)
+        except:
+            print_timestamp(traceback.format_exc())
+            print_timestamp(f"Unable to save data to {config.CONFIG}")
+
+backup.start()
 #endregion
 
 
@@ -474,7 +515,7 @@ class Money(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="reset-money", help="Reset balance of target: reset-money <user: discord.Member>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def reset_money(self, ctx: Context, member: discord.Member):
         try:
             if member.id in members:
@@ -501,7 +542,7 @@ class Money(commands.Cog):
         config.save()
 
     @commands.command(name="remove-money", help="Remove money from target: remove-money <user: discord.Member> <value: integer>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def remove_money(self, ctx: Context, member: discord.Member, balance: int):
         try:
             if member.id in members:
@@ -527,7 +568,7 @@ class Money(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="add-money", help="Add money to target: add-money <user: discord.Member> <value: integer>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def add_money(self, ctx: Context, *message):
         try:
             if message[0] == "everyone":
@@ -788,7 +829,7 @@ class Income(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="add-income", pass_context=True, help="Add income: add-income <role: discord.Role> <value: integer>")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def add_income(self, ctx: Context, role, value: int):
         try:
             if value > 0:
@@ -822,7 +863,7 @@ class Income(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="remove-income", pass_context=True, help="Remove income: remove-income <role: discord.Role> <value: integer>")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def remove_income(self, ctx: Context, role, value: int):
         try:
             if value > 0:
@@ -902,7 +943,7 @@ class Config(commands.Cog):
     """Modify configuration file"""
 
     @commands.command(name="config-save", help="Save configuration file: config-save", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def config_save(self, ctx: Context):
         try:
             config.save()
@@ -917,7 +958,7 @@ class Config(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="config-load", help="Load configuration file: config-load", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def config_load(self, ctx: Context):
         try:
             config.load()
@@ -933,7 +974,7 @@ class Config(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="config", help="Output config directory: config <path> [path]...", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def _config(self, ctx: Context, *message):
         try:
             message = list(message)
@@ -1017,7 +1058,7 @@ class Config(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="set", help="Change values in config. You rather know what ya doin!: set <path> [path]... = <value>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def set(self, ctx: Context, *message):
         try:
             message = list(message)
@@ -1079,7 +1120,7 @@ class Config(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="config-stats", help="Config stats: config-stats", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def config_stats(self, ctx: Context):
         size = os.path.getsize(config.CONFIG)
         embed = discord.Embed(
@@ -1089,6 +1130,11 @@ class Config(commands.Cog):
         embed.set_author(name="Config-stats", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
 
+    @commands.command(name="next-backup", help="Outputs time of next backup: next-backup", pass_context=True)
+    @commands.has_permissions(administrator=True)
+    async def next_backup(self, ctx: Context):
+        message = backup.next_iteration.astimezone(pytz.timezone('Europe/Prague')).strftime(r"%H:%M:%S, %d/%m/%Y")
+        await ctx.send(message)
 
 
 class Development(commands.Cog):
@@ -1104,7 +1150,7 @@ class Development(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="reload", help="Reload members and roles: reload")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def reload(self, ctx: Context):
             try:
                 embed = discord.Embed(
@@ -1158,7 +1204,7 @@ class Development(commands.Cog):
                 await ctx.send(traceback.format_exc())
 
     @commands.command(name="python3", help="Execute python code: python3 <command>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def python3(self, ctx: Context, *message):
         try:
             message = list(message)
@@ -1200,7 +1246,7 @@ class Development(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="execute", help="Execute python code: execute <command>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def config_save(self, ctx: Context, *message):
         try:
             message = list(message)
@@ -1212,7 +1258,7 @@ class Development(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="dm", help="Send dm to member: dm <member: discord.Member> <content: str>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def send_dm(self, ctx: Context, member: discord.Member, *, content):
         if content == "join-dm":
             if config["join_dm"] != "":
@@ -1227,7 +1273,7 @@ class Settings(commands.Cog):
     """Modify settings"""
 
     @commands.command(name="shutdown", help="Show the bot, whos da boss: shutdown", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def shutdown(self, ctx: Context):
         embed = discord.Embed(
             colour = discord.Colour.from_rgb(255,255,0),
@@ -1239,7 +1285,7 @@ class Settings(commands.Cog):
         sys.exit()
 
     @commands.command(name="add-item", pass_context=True, help="Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] name cost")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def add_item(self, ctx: Context, *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
@@ -1273,7 +1319,7 @@ class Settings(commands.Cog):
         config.save()
 
     @commands.command(name="remove-item", pass_context=True, help="Remove item from database: remove-item <name: string>")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def remove_item(self, ctx: Context, item: str):
         try:
             try: item
@@ -1305,7 +1351,7 @@ class Settings(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="prefix", help="Change prefix of da bot: prefix <prefix: string>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def command_prefix(self, ctx: Context, prefix: str):
         try:
             config.config["prefix"] = prefix
@@ -1325,7 +1371,7 @@ class Settings(commands.Cog):
         await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}"))
 
     @commands.command(name="deltatime", help="Sets time between allowed !work commands: deltatime <value: integer>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def deltatime(self, ctx: Context, value: int):
         try:
             config["deltatime"] = int(value)
@@ -1342,12 +1388,12 @@ class Settings(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="bravo-six-going-dark", help="Deletes messages: bravo-six-going-dark <messages: integer>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def deltatime(self, ctx: Context, messages: int):
         await ctx.channel.purge(limit=messages)
 
     @commands.command(name="on-join-dm", help="Set message to be send when player joins: on-join-dm <message: str>", pass_context=True)
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def on_join_dm(self, ctx: Context, *, message):
         try:
             config["join_dm"] = message
@@ -1789,7 +1835,7 @@ class Inventory(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
@@ -1832,7 +1878,7 @@ class Inventory(commands.Cog):
         config.save()
 
     @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
         if item in config["players"][user.id]["inventory"]:
             del config["players"][user.id]["inventory"][item]
@@ -1936,7 +1982,7 @@ class Missions(commands.Cog):
     "Mission based game mechanics"
 
     @commands.command(name="add-mission", help="Add new mission: add-mission [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--loot-table LOOT_TABLE] [--xp XP] name cost")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def add_mission(self, ctx: Context, *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
@@ -1981,7 +2027,7 @@ class Missions(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="remove-mission", help="Remove mission: remove-mission <mission: str>")
-    @commands.has_any_role(*config["admin_role_name"])
+    @commands.has_permissions(administrator=True)
     async def remove_mission(self, ctx: Context, mission: str):
         try:
             try:
