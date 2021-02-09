@@ -11,6 +11,7 @@ import platform
 import argparse
 import shlex
 import traceback
+from io import StringIO
 from discord.ext import commands
 from discord.ext.commands.context import Context
 from discord.utils import get
@@ -52,6 +53,28 @@ def sizeof_fmt(num, suffix='B'):
             return "%3.1f%s%s" % (num, unit, suffix)
         num /= 1024.0
     return "%.1f%s%s" % (num, 'Yi', suffix)
+
+async def levelup_check(ctx: Context):
+    player = ctx.author
+    xp = config["players"][player.id]["xp"]
+    level = config["players"][player.id]["level"]
+
+    xp_for_level = config["xp_for_level"]
+    for _ in range(level):
+        xp_for_level *= config["level_multiplier"]
+
+    xp_for_level = int(xp_for_level)
+
+    if xp >= xp_for_level:
+        embed = discord.Embed(
+            colour = discord.Colour.from_rgb(255,255,0),
+            description = f'You are now level `{config["players"][player.id]["level"] + 1}`'
+        )
+        embed.set_author(name="Levelup", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
+        config["players"][player.id]["xp"] -= xp_for_level
+        config["players"][player.id]["level"] += 1
+        await levelup_check(ctx)
 
 class Config():
     "Class for maintaining configuration information and files"
@@ -103,8 +126,13 @@ class Config():
             "disabled_roles": ["@everyone"],
             "deltatime": 7200,
             "default_role":"",
+            "backup_time": 10800,
+            "backups": 3,
             "work_range": 0,
-            "default_balance": 0
+            "join_dm": "",
+            "default_balance": 0,
+            "level_multiplier": 1.2,
+            "xp_for_level": 1000
         }
 
     def save(self):
@@ -125,8 +153,9 @@ class Config():
         try:
             return self.config[name]
         except:
-            self.print_timestamp(f"{c.warning}Not found in config, trying to get from fallback{c.end}")
+            self.print_timestamp(f"{c.bold}{name}{c.end} {c.warning}not found in config, trying to get from fallback{c.end}")
             self.config[name] = self.fallback[name]
+            self.save()
             return self.fallback[name]
 
     def __setitem__(self, key: str, val):
@@ -154,18 +183,18 @@ roles = list(config["income"].keys())
 async def on_ready():
     print_timestamp(f'{c.bold}Initialized:{c.end} {c.okgreen}{bot.user}{c.end} - {c.okblue}{bot.user.id}{c.end}')
     for member in bot.guilds[0].members:
-        if not member.id in config.config["players"]:
+        if not member.id in config["players"]:
             members.append(member.id)
             print_timestamp(f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
             config["players"][member.id] = {}
             config["players"][member.id]["balance"] = config["default_balance"]
             config["players"][member.id]["last-work"] = 0
+            config["players"][member.id]["xp"] = 0
+            config["players"][member.id]["level"] = 1
             config["players"][member.id]["manpower"] = 0
             config["players"][member.id]["upgrade"] = {}
             config["players"][member.id]["maxupgrade"] = {}
-            config["players"][member.id]["custom_shop"] = {}
-            config["players"][member.id]["custom_shop"]["inventory"] = {}
-            config["players"][member.id]["custom_shop"]["shop"] = {}
+            config["players"][member.id]["player_shop"] = {}
             config["players"][member.id]["stats"] = {
                 "diplomacy": 0,
                 "warlord": 0,
@@ -180,6 +209,92 @@ async def on_ready():
                 print_timestamp(f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
                 config["players"][member.id]["upgrade"][item] = 0
                 config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
+
+        try:
+            config["players"][member.id]["balance"]
+        except:
+            config["players"][member.id]["balance"] = config["default_balance"]
+            print_timestamp(f"Config: balance => {member.name}({member.id})")
+
+        try:
+            config["missions"]
+        except:
+            config["missions"] = {}
+            print_timestamp(f"Config: missions => config")
+
+        try:
+            config["players"][member.id]["last-work"]
+        except:
+            config["players"][member.id]["last-work"] = 0
+            print_timestamp(f"Config: last-work => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["manpower"]
+        except:
+            config["players"][member.id]["manpower"] = 0
+            print_timestamp(f"Config: manpower => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["xp"]
+        except:
+            config["players"][member.id]["xp"] = 0
+            print_timestamp(f"Config: xp => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["skillpoints"]
+        except:
+            config["players"][member.id]["skillpoints"] = 0
+            print_timestamp(f"Config: skillpoints => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["level"]
+        except:
+            config["players"][member.id]["level"] = 1
+            print_timestamp(f"Config: level => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["upgrade"]
+        except:
+            config["players"][member.id]["upgrade"] = {}
+            print_timestamp(f"Config: upgrade => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["maxupgrade"]
+        except:
+            config["players"][member.id]["maxupgrade"] = {}
+            print_timestamp(f"Config: maxupgrade => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["player_shop"]
+        except:
+            config["players"][member.id]["player_shop"] = {}
+            print_timestamp(f"Config: player_shop => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["inventory"]
+        except:
+            config["players"][member.id]["inventory"] = {}
+            print_timestamp(f"Config: inventory => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["equiped"]
+        except:
+            config["players"][member.id]["equiped"] = {}
+            print_timestamp(f"Config: equiped => {member.name}({member.id})")
+
+        try:
+            config["players"][member.id]["stats"]
+        except:
+            config["players"][member.id]["stats"] = {
+                "diplomacy": 0,
+                "warlord": 0,
+                "intrique": 0,
+                "stewardship": 0,
+                "trading": 0,
+                "bartering": 0,
+                "learning": 0
+            }
+            print_timestamp(f"Config: stats => {member.name}({member.id})")
 
     for role in bot.guilds[0].roles:
         if not (role.id in roles):
@@ -218,21 +333,37 @@ async def on_member_join(member: discord.Member):
     if not member.id in config.config["players"]:
         members.append(member.id)
         print_timestamp(f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
-        config.config["players"][member.id] = {}
-        config.config["players"][member.id]["balance"] = config["default_balance"]
-        config.config["players"][member.id]["last-work"] = 0
-        config.config["players"][member.id]["manpower"] = 0
-        config.config["players"][member.id]["upgrade"] = {}
-        config.config["players"][member.id]["maxupgrade"] = {}
-        config.config["players"][member.id]["custom_shop"] = {}
-        config.config["players"][member.id]["custom_shop"]["inventory"] = {}
-        config.config["players"][member.id]["custom_shop"]["shop"] = {}
+        config["players"][member.id] = {}
+        config["players"][member.id]["balance"] = config["default_balance"]
+        config["players"][member.id]["last-work"] = 0
+        config["players"][member.id]["manpower"] = 0
+        config["players"][member.id]["skillpoints"] = 0
+        config["players"][member.id]["level"] = 1
+        config["players"][member.id]["xp"] = 0
+        config["players"][member.id]["upgrade"] = {}
+        config["players"][member.id]["maxupgrade"] = {}
+        config["players"][member.id]["player_shop"] = {}
+        config["players"][member.id]["inventory"] = {}
+        config["players"][member.id]["equiped"] = {}
+        config["players"][member.id]["stats"] = {
+                "diplomacy": 0,
+                "warlord": 0,
+                "intrique": 0,
+                "stewardship": 0,
+                "trading": 0,
+                "bartering": 0,
+                "learning": 0
+        }
 
         for item in config["upgrade"].keys():
             print_timestamp(f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
             config.config["players"][member.id]["upgrade"][item] = 0
             config.config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
     print_timestamp(f"{c.bold}{member.display_name} ■ {member.id}{c.end} joined")
+
+    if config["join_dm"] != "":
+        channel = await member.create_dm()
+        await channel.send(config["join_dm"])
 
     config.save()
 #endregion
@@ -302,13 +433,13 @@ class Money(commands.Cog):
                     await ctx.send(embed=embed)
                 else:
                     income_multiplier = 1
-                    for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
-                        item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                    for item in config["players"][ctx.author.id]["inventory"]:
+                        item = config["players"][ctx.author.id]["inventory"][item]
                         income_multiplier = income_multiplier * (item["income_percent"] / 100)
 
                     income_boost = 0
-                    for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
-                        item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                    for item in config["players"][ctx.author.id]["inventory"]:
+                        item = config["players"][ctx.author.id]["inventory"][item]
                         income_boost += item["income"]
 
                     income = (income*income_multiplier)+income_boost
@@ -443,7 +574,7 @@ class Money(commands.Cog):
         config.save()
 
     @commands.command(name="buy", help="Spend money to make more money bruh: buy <type: string> <value: integer>")
-    async def buy_upgrade(self, ctx: Context, type: str, value: int):
+    async def buy_upgrade(self, ctx: Context, type: str, value: int = 1):
         try:
             if type in config["upgrade"].keys():
                 try:
@@ -452,8 +583,8 @@ class Money(commands.Cog):
                     call = True
                 if config["upgrade"][type] == None or call:
                     discount = 0
-                    for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
-                        item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+                    for item in config["players"][ctx.author.id]["equiped"]:
+                        item = config["players"][ctx.author.id]["equiped"][item]
                         if item["discount"] != None:
                             if type == item["discount"]:
                                 discount += item["discount_percent"]
@@ -637,13 +768,13 @@ class Income(commands.Cog):
                     await ctx.send(embed=embed)
 
             income_multiplier = 1
-            for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
-                item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+            for item in config["players"][ctx.author.id]["equiped"]:
+                item = config["players"][ctx.author.id]["equiped"][item]
                 income_multiplier = income_multiplier * (item["income_percent"] / 100)
 
             income_boost = 0
-            for item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
-                item = config["players"][ctx.author.id]["custom_shop"]["inventory"][item]
+            for item in config["players"][ctx.author.id]["equiped"]:
+                item = config["players"][ctx.author.id]["equiped"][item]
                 income_boost += item["income"]
 
             embed = discord.Embed(
@@ -941,6 +1072,7 @@ class Config(commands.Cog):
                     break
                 else:
                     current = current[word]
+            await levelup_check(ctx)
             config.save()
         except:
             print(traceback.format_exc())
@@ -1079,6 +1211,16 @@ class Development(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
+    @commands.command(name="dm", help="Send dm to member: dm <member: discord.Member> <content: str>", pass_context=True)
+    @commands.has_any_role(*config["admin_role_name"])
+    async def send_dm(self, ctx: Context, member: discord.Member, *, content):
+        if content == "join-dm":
+            if config["join_dm"] != "":
+                content = config["join_dm"]
+
+        channel = await member.create_dm()
+        await channel.send(content)
+
 
 
 class Settings(commands.Cog):
@@ -1125,7 +1267,7 @@ class Settings(commands.Cog):
         embed.add_field(name="Cost", value=fargs.cost, inline=True)
         embed.add_field(name="Maximum", value=fargs.maxupgrade, inline=True) if fargs.maxupgrade != None else None
         embed.add_field(name="Income", value=fargs.income, inline=True) if fargs.income != 0 else None
-        embed.add_field(name="Manpower", value=fargs.manpower, inline=True) if fargs.manpower != 0 else None
+        embed.add_field(name="Manpower", value=fargs.manpower, inline=True) if fargs.manpower != 0 or fargs.manpower != None else None
         await ctx.send(embed=embed)
         
         config.save()
@@ -1203,6 +1345,23 @@ class Settings(commands.Cog):
     @commands.has_any_role(*config["admin_role_name"])
     async def deltatime(self, ctx: Context, messages: int):
         await ctx.channel.purge(limit=messages)
+
+    @commands.command(name="on-join-dm", help="Set message to be send when player joins: on-join-dm <message: str>", pass_context=True)
+    @commands.has_any_role(*config["admin_role_name"])
+    async def on_join_dm(self, ctx: Context, *, message):
+        try:
+            config["join_dm"] = message
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"Sucessfully set"
+            )
+            embed.set_author(name="Join dm", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        
+            config.save()
+        except:
+            print(traceback.format_exc())
+            ctx.send(traceback.format_exc())
 
 
 
@@ -1354,8 +1513,14 @@ class Essentials(commands.Cog):
             index = 1
             msg = ""
             for item in config["upgrade"]:
-                manpower = f'`Manpower:` {config["upgrade"][item]["manpower"]}' if "manpower" in config["upgrade"][item] else ""
-                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config["players"][ctx.author.id]["maxupgrade"][item] != None else "Not limited"
+                if "manpower" in config["upgrade"][item]:
+                    if config["upgrade"][item]["manpower"] != 0:
+                        manpower = f'`Manpower:` {config["upgrade"][item]["manpower"]}'
+                    else:
+                        manpower = ""
+                else:
+                    manpower = ""
+                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config["players"][ctx.author.id]["maxupgrade"][item] != None else 'Not limited'
                 msg += f'`{item}` {stock} `Cost:` {config["upgrade"][item]["cost"]:,}{config["currency_symbol"]} {manpower}\n'.replace(",", " ")
                 if index == 30:
                     embed = discord.Embed(
@@ -1411,12 +1576,12 @@ class PlayerShop(commands.Cog):
 
             e_list = []
             index = 1
-            last = len(config["players"][user.id]["custom_shop"]["shop"])
-            for name in config["players"][user.id]["custom_shop"]["shop"]:
-                item = config["players"][user.id]["custom_shop"]["inventory"][name]
+            last = len(config["players"][user.id]["shop"])
+            for name in config["players"][user.id]["shop"]:
+                item = config["players"][user.id]["inventory"][name]
                 embed=discord.Embed(title=name, description=item["description"], color=0xffff00)
                 embed.set_author(name="Player shop" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
-                embed.add_field(name="Price", value=config["players"][user.id]["custom_shop"]["shop"][name], inline=False)
+                embed.add_field(name="Price", value=config["players"][user.id]["shop"][name], inline=False)
                 embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
                 embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
                 embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
@@ -1434,7 +1599,7 @@ class PlayerShop(commands.Cog):
     @commands.command(name="player-sell", help="Sell items: player-sell <item: str> <price: int>")
     async def player_sell(self, ctx: Context, item: str, price: int):
         try:
-            if not item in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
+            if not item in config["players"][ctx.author.id]["inventory"]:
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
                     description = f"{item} not found in your inventory"
@@ -1443,7 +1608,7 @@ class PlayerShop(commands.Cog):
                 await ctx.send(embed=embed)
                 return
 
-            config["players"][ctx.author.id]["custom_shop"]["shop"] = {**config["players"][ctx.author.id]["custom_shop"]["shop"], **{item: price}}
+            config["players"][ctx.author.id]["shop"] = {**config["players"][ctx.author.id]["shop"], **{item: price}}
 
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
@@ -1460,12 +1625,12 @@ class PlayerShop(commands.Cog):
     @commands.command(name="player-buy", help="Sell items: player-buy <user: discord.Member> <item: str> <count: int>")
     async def sell(self, ctx: Context, user: discord.Member, item: str):
         try:
-            cost = config["players"][user.id]["custom_shop"]["shop"][item]
+            cost = config["players"][user.id]["shop"][item]
             if config["players"][ctx.author.id]["balance"] >= cost:
-                config["players"][ctx.author.id]["custom_shop"]["inventory"][item] = config["players"][user.id]["custom_shop"]["shop"][item]
+                config["players"][ctx.author.id]["inventory"][item] = config["players"][user.id]["shop"][item]
                 config["players"][ctx.author.id]["balance"] -= cost
                 config["players"][user.id]["balance"] += cost
-                del config["players"][user.id]["custom_shop"]["shop"][item]
+                del config["players"][user.id]["shop"][item]
 
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
@@ -1486,16 +1651,22 @@ class PlayerShop(commands.Cog):
 
         config.save()
 
+
+
+class Inventory(commands.Cog):
+    "Inventory"
+
     @commands.command(name="inventory", help="Shows your 'realy usefull' items in your inventory: inventory", aliases=["inv","backpack","loot"])
     async def inventory(self, ctx: Context):
         try:
             e_list = []
             index = 1
-            last = len(config["players"][ctx.author.id]["custom_shop"]["inventory"])
-            for name in config["players"][ctx.author.id]["custom_shop"]["inventory"]:
-                item = config["players"][ctx.author.id]["custom_shop"]["inventory"][name]
+            last = len(config["players"][ctx.author.id]["inventory"])
+            for name in config["players"][ctx.author.id]["inventory"]:
+                item = config["players"][ctx.author.id]["inventory"][name]
                 embed=discord.Embed(title=name, description=item["description"], color=rarity.__dict__[item["rarity"]])
                 embed.set_author(name="Inventory" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
+                embed.add_field(name="Type", value=item["type"], inline=True)
                 embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
                 embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
                 embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
@@ -1520,12 +1691,110 @@ class PlayerShop(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name rarity")
+    @commands.command(name="equiped", help="Shows your 'realy usefull' items in your inventory: inventory")
+    async def equiped(self, ctx: Context):
+        try:
+            e_list = []
+            index = 1
+            last = len(config["players"][ctx.author.id]["equiped"])
+            for name in config["players"][ctx.author.id]["equiped"]:
+                item = config["players"][ctx.author.id]["equiped"][name]
+                embed=discord.Embed(title=name, description=item["description"], color=rarity.__dict__[item["rarity"]])
+                embed.set_author(name="Inventory" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
+                embed.add_field(name="Type", value=item["type"], inline=True)
+                embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
+                embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
+                embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
+                embed.add_field(name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
+                embed.add_field(name="Rarity", value=item["rarity"], inline=True)
+                e_list.append(embed)
+                index += 1
+
+            if e_list == []:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"❌ Nothing in inventory"
+                )
+                embed.set_author(name="Inventory", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
+            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
+            paginator.remove_reactions = True
+            await paginator.run(e_list)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+    
+    @commands.command(name="equip", help="Equip item")
+    async def equip(self, ctx: Context, item: str):
+        try:
+            try:
+                types = []
+                for equiped in config["players"][ctx.author.id]["equiped"]:
+                    equiped = config["players"][ctx.author.id]["equiped"][equiped]
+                    types.append(equiped["type"])
+
+                if config["players"][ctx.author.id]["inventory"][item]["type"] in types:
+                    embed = discord.Embed(
+                        colour = discord.Colour.from_rgb(255,255,0),
+                        description = f"❌ Slot already occupied"
+                    )
+                    embed.set_author(name="Equip", icon_url=bot.user.avatar_url)
+                    await ctx.send(embed=embed)
+                    return
+
+                config["players"][ctx.author.id]["equiped"][item] = config["players"][ctx.author.id]["inventory"][item]
+                del config["players"][ctx.author.id]["inventory"][item]
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"✅ {item} equiped"
+                )
+                embed.set_author(name="Equip", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                config.save()
+            except KeyError:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"❌ {item} not found in your inventory"
+                )
+                embed.set_author(name="Equip", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="unequip", help="Unequip item")
+    async def unequip(self, ctx: Context, item: str):
+        try:
+            try:
+                config["players"][ctx.author.id]["inventory"][item] = config["players"][ctx.author.id]["equiped"][item]
+                del config["players"][ctx.author.id]["equiped"][item]
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"✅ {item} unequiped"
+                )
+                embed.set_author(name="Unequip", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                config.save()
+            except KeyError:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"{item} not found in your inventory"
+                )
+                embed.set_author(name="Unequip", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}")
     @commands.has_any_role(*config["admin_role_name"])
     async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
         fparser.add_argument("rarity", choices=["common","uncommon","rare","epic","legendary","event"], type=str)
+        fparser.add_argument("type", choices=["helmet", "weapon", "armor", "leggins", "boots", "artefact"])
         fparser.add_argument("--income", type=int, default=0)
         fparser.add_argument("--income_percent", type=int, default=100)
         fparser.add_argument("--discount", type=str, default=None)
@@ -1539,17 +1808,20 @@ class PlayerShop(commands.Cog):
         except SystemExit:
             return
 
-        config["players"][user.id]["custom_shop"]["inventory"][fargs.name] = {
+        config["players"][user.id]["inventory"][fargs.name] = {
             "description": fargs.description,
+            "type": fargs.type,
             "rarity": fargs.rarity,
             "income": fargs.income,
             "income_percent": fargs.income_percent,
             "discount": fargs.discount,
-            "discount_percent": fargs.discount_percent
+            "discount_percent": fargs.discount_percent,
+            "equiped": False
         }
 
         embed=discord.Embed(title=fargs.name, description=fargs.description, color=rarity.__dict__[fargs.rarity])
         embed.set_author(name="Succesfully added to inventory", icon_url=bot.user.avatar_url)
+        embed.add_field(name="Type", value=fargs.type, inline=True)
         embed.add_field(name="Income", value=fargs.income, inline=True)
         embed.add_field(name="Income %", value=fargs.income_percent, inline=True)
         embed.add_field(name="Discount", value=fargs.discount, inline=True)
@@ -1562,8 +1834,8 @@ class PlayerShop(commands.Cog):
     @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
     @commands.has_any_role(*config["admin_role_name"])
     async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
-        if item in config["players"][user.id]["custom_shop"]["inventory"]:
-            del config["players"][user.id]["custom_shop"]["inventory"][item]
+        if item in config["players"][user.id]["inventory"]:
+            del config["players"][user.id]["inventory"][item]
 
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
@@ -1581,8 +1853,10 @@ class PlayerShop(commands.Cog):
         config.save()
 
 
+
 class Player(commands.Cog):
-    @commands.command(name="stats", help="Show player shop: player-shop <player: discord.Member>")
+    "Leveling up, upgrading stats"
+    @commands.command(name="skills", help="Show player shop: player-shop <player: discord.Member>", aliases=["stats"])
     async def stats(self, ctx: Context):
         try:
             player = config["players"][ctx.author.id]["stats"]
@@ -1590,20 +1864,173 @@ class Player(commands.Cog):
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
                 description = f"""
-Diplomacy: {player["diplomacy"]}
-Warlord: {player["warlord"]}
-Intrique: {player["intrique"]}
-Stewardship: {player["stewardship"]}
-Trading: {player["trading"]}
-Bartering: {player["bartering"]}
-Learning: {player["learning"]}
-"""
-            )
+                    Diplomacy: {player["diplomacy"]}
+                    Warlord: {player["warlord"]}
+                    Intrique: {player["intrique"]}
+                    Stewardship: {player["stewardship"]}
+                    Trading: {player["trading"]}
+                    Bartering: {player["bartering"]}
+                    Learning: {player["learning"]}""")
             embed.set_author(name="Stats", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
+
+    @commands.command(name="level", help="Show level, Xp and progress to another level")
+    async def level(self, ctx: Context):
+        try:
+            await levelup_check(ctx)
+            level = config["players"][ctx.author.id]["level"]
+
+            xp_for_level = config["xp_for_level"]
+            for i in range(level):
+                xp_for_level *= config["level_multiplier"]
+
+            xp_for_level = int(xp_for_level)
+            xp = config["players"][ctx.author.id]["xp"]
+
+            if xp == 0:
+                progress = 0
+            else:
+                progress = int((xp / xp_for_level) * 100)
+
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f'Level: {level}\nXp: {xp} / {xp_for_level}\n[{"#"*int(progress/2)+"-"*(50-int(progress/2))}] {progress}%'
+            )
+            embed.set_author(name="Level", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="skill-add", help="Show level, Xp and progress to another level")
+    async def skill_add(self, ctx: Context, skill: str, value: int = 1):
+        try:
+            if config["players"][ctx.author.id]["skillpoints"] >= value:
+                config["players"][ctx.author.id]["stats"][skill.lower()] += value
+                config["players"][ctx.author.id]["skillpoints"] -= value
+
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f'Skill point used: {skill} = {config["players"][ctx.author.id]["stats"][skill.lower()]}'
+                )
+                embed.set_author(name="Skillpoints", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                config.save()
+            else:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f'Not enought skillpoints'
+                )
+                embed.set_author(name="Skillpoints", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+
+
+class Missions(commands.Cog):
+    "Mission based game mechanics"
+
+    @commands.command(name="add-mission", help="Add new mission: add-mission [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--loot-table LOOT_TABLE] [--xp XP] name cost")
+    @commands.has_any_role(*config["admin_role_name"])
+    async def add_mission(self, ctx: Context, *querry):
+        fparser = argparse.ArgumentParser()
+        fparser.add_argument("name", type=str)
+        fparser.add_argument("cost", type=int)
+        fparser.add_argument("--manpower", type=int, default=0)
+        fparser.add_argument("--level", type=int, default=0)
+        fparser.add_argument("--chance", type=int, default=100)
+        fparser.add_argument("--loot-table", type=dict, default={})
+        fparser.add_argument("--xp", type=int, default=0)
+        fparser.add_argument("--description", default=None)
+
+        querry = shlex.split(" ".join(querry))
+
+        try:
+            fargs = fparser.parse_args(querry)
+        except SystemExit:
+            return
+
+        try:
+            config["missions"][fargs.name] = {
+                "cost": fargs.cost,
+                "manpower": fargs.manpower,
+                "level": fargs.level,
+                "chance": fargs.chance,
+                "loot-table": fargs.loot_table,
+                "xp": fargs.xp,
+                "description": fargs.description
+            }
+
+            embed=discord.Embed(title=fargs.name, description=fargs.description, color=discord.Colour.from_rgb(255,255,0))
+            embed.set_author(name="Succesfully added to missions", icon_url=bot.user.avatar_url)
+            embed.add_field(name="Cost", value=f"{fargs.cost:,}".replace(",", " "), inline=True)
+            embed.add_field(name="Required manpower", value=f"{fargs.manpower:,}".replace(",", " "), inline=True)
+            embed.add_field(name="Required Level", value=fargs.level, inline=True)
+            embed.add_field(name="Chance", value=str(fargs.chance) + "%", inline=True)
+            embed.add_field(name="Xp", value=f"{fargs.xp:,}".replace(",", " "), inline=True)
+            await ctx.send(embed=embed)
+
+            config.save()
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="remove-mission", help="Remove mission: remove-mission <mission: str>")
+    @commands.has_any_role(*config["admin_role_name"])
+    async def remove_mission(self, ctx: Context, mission: str):
+        try:
+            try:
+                del config["missions"][mission]
+            except KeyError:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"❌ Mission not found"
+                )
+                embed.set_author(name="Remove mission", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+        except:
+            print(traceback.format_exc())
+            ctx.send(traceback.format_exc())
+
+    @commands.command(name="missions", help="List of missions: missions")
+    async def missions(self, ctx: Context):
+        try:
+            e_list = []
+            index = 1
+            for _mission in config["missions"]:
+                mission = config["missions"][_mission]
+                embed=discord.Embed(title=_mission, description=mission["description"], color=discord.Colour.from_rgb(255,255,0))
+                embed.set_author(name="Missions", icon_url=bot.user.avatar_url)
+                embed.add_field(name="Cost", value=mission["cost"], inline=True)
+                embed.add_field(name="Manpower", value=mission["manpower"], inline=True)
+                embed.add_field(name="Level", value=mission["level"], inline=True)
+                embed.add_field(name="Chance", value=str(mission["chance"]) + "%", inline=True)
+                embed.add_field(name="Xp", value=mission["xp"], inline=True)
+                e_list.append(embed)
+                index += 1
+
+            if e_list == []:
+                embed = discord.Embed(
+                    colour = discord.Colour.from_rgb(255,255,0),
+                    description = f"❌ No missions yet"
+                )
+                embed.set_author(name="Missions", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
+            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
+            paginator.remove_reactions = True
+            await paginator.run(e_list)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
 
 
 bot.add_cog(Money())
@@ -1613,6 +2040,8 @@ bot.add_cog(Config())
 bot.add_cog(Development())
 bot.add_cog(Settings())
 bot.add_cog(PlayerShop())
+bot.add_cog(Inventory())
 bot.add_cog(Player())
+bot.add_cog(Missions())
 
 bot.run(os.environ["TRINITY"])
