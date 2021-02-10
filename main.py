@@ -176,7 +176,7 @@ bot = commands.Bot(command_prefix=commands.when_mentioned_or(config["prefix"]), 
 members = list(config["players"].keys())
 roles = list(config["income"].keys())
 
-btime = config.config["backup_time"]
+btime = config["backup_time"]
 
 @tasks.loop(seconds=btime)
 async def backup():
@@ -1135,6 +1135,7 @@ class Config(commands.Cog):
     async def next_backup(self, ctx: Context):
         message = backup.next_iteration.astimezone(pytz.timezone('Europe/Prague')).strftime(r"%H:%M:%S, %d/%m/%Y")
         await ctx.send(message)
+
 
 
 class Development(commands.Cog):
