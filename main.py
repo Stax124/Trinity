@@ -10,10 +10,12 @@ import time
 import platform
 import argparse
 import shlex
+import asyncio
 import traceback
 from io import StringIO
 from discord.ext import commands, tasks
 from discord.ext.commands.context import Context
+from discord.ext.commands import CommandNotFound
 from discord.utils import get
 from pretty_help import PrettyHelp
 import DiscordUtils
@@ -74,6 +76,7 @@ async def levelup_check(ctx: Context):
         await ctx.send(embed=embed)
         config["players"][player.id]["xp"] -= xp_for_level
         config["players"][player.id]["level"] += 1
+        config["players"][player.id]["skillpoints"] += 1
         await levelup_check(ctx)
 
 class Config():
@@ -370,6 +373,18 @@ async def on_guild_role_delete(role):
     config.save()
 
 @bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, CommandNotFound):
+        embed = discord.Embed(
+            colour = discord.Colour.from_rgb(255,255,0),
+            description = f'❌ Command not found'
+        )
+        embed.set_author(name="Status", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
+    else:
+        raise error
+
+@bot.event
 async def on_member_join(member: discord.Member):
     if not member.id in config.config["players"]:
         members.append(member.id)
@@ -405,6 +420,7 @@ async def on_member_join(member: discord.Member):
     if config["join_dm"] != "":
         channel = await member.create_dm()
         await channel.send(config["join_dm"])
+        print_timestamp(f"Welcome message sent to {member}")
 
     config.save()
 #endregion
@@ -483,7 +499,7 @@ class Money(commands.Cog):
                         item = config["players"][ctx.author.id]["inventory"][item]
                         income_boost += item["income"]
 
-                    income = (income*income_multiplier)+income_boost
+                    income = (income*income_multiplier)+income_boost+(round(config['players'][ctx.author.id]['stats']['stewardship']*income*0.025, 5))
 
                     rate = random.randrange(100-config["work_range"]*100,100+config["work_range"]*100) / 100 if config["work_range"] != 0 else 1
                     if config["players"][ctx.author.id]["last-work"] != 0:
@@ -498,7 +514,7 @@ class Money(commands.Cog):
                     print_timestamp(f"{c.bold}{ctx.author.display_name} ■ {ctx.author.id}{c.end} is working {c.warning}[timedelta={timedelta}, rate={rate}]{c.end}")
                     embed = discord.Embed(
                         colour = discord.Colour.from_rgb(255,255,0),
-                        description = f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`".replace(",", " ")
+                        description = f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus: `{config['players'][ctx.author.id]['stats']['stewardship']*2.5}%`".replace(",", " ")
                     )
                     embed.set_author(name="Work", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
@@ -633,7 +649,7 @@ class Money(commands.Cog):
                     if discount > 100:
                         discount = 100
 
-                    discount = discount * 0.01
+                    discount = round((discount * 0.01) + (config['players'][ctx.author.id]['stats']['bartering']*0.025), 5)
 
                     cost = (config["upgrade"][type]["cost"] - config["upgrade"][type]["cost"] * discount) * int(value)
                     if config.config["players"][ctx.author.id]["balance"] >= cost:
@@ -678,14 +694,14 @@ class Money(commands.Cog):
                             if config["upgrade"][type]["income"] != 0:
                                 embed = discord.Embed(
                                     colour = discord.Colour.from_rgb(255,255,0),
-                                    description = f"✅ Bought {value}x {type} for {cost:,}{config['currency_symbol']} and your income is now {config.config['income'][role_list[0]]:,}{config['currency_symbol']}".replace(",", " ")
+                                    description = f"✅ Bought {value}x {type} for {cost:,}{config['currency_symbol']} and your income is now {config.config['income'][role_list[0]]:,}{config['currency_symbol']}\nDiscount: `{discount*100}%`\nBartering discount included in discount: `{config['players'][ctx.author.id]['stats']['bartering']*2.5}%`".replace(",", " ")
                                 )
                                 embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                                 await ctx.send(embed=embed)
                             else:
                                 embed = discord.Embed(
                                     colour = discord.Colour.from_rgb(255,255,0),
-                                    description = f"✅ Bought {value}x {type} for `{cost:,}{config['currency_symbol']}`\nDiscount: `{discount*100}%`".replace(",", " ")
+                                    description = f"✅ Bought {value}x {type} for `{cost:,}{config['currency_symbol']}`\nDiscount: `{discount*100}%`\nBartering discount included in discount: `{config['players'][ctx.author.id]['stats']['bartering']*2.5}%`".replace(",", " ")
                                 )
                                 embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                                 await ctx.send(embed=embed)
@@ -782,7 +798,7 @@ class Income(commands.Cog):
         try:
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
-                description = f"Income: {(int(message[0]) * 0.01 * 0.4 / 6):,}{config['currency_symbol']}".replace(",", " ")
+                description = f"Income: {int((int(message[0]) * 0.01 * 0.4 / 6)):,}{config['currency_symbol']}".replace(",", " ")
             )
             embed.set_author(name="Role", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
@@ -1594,22 +1610,6 @@ class Essentials(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="manpower", help="Show manpower of user", aliases=["mp","power"])
-    async def manpower(self, ctx: Context, user: discord.Member = None):
-        try:
-            if user == None:
-                user = ctx.author
-
-            embed = discord.Embed(
-                colour = discord.Colour.from_rgb(255,255,0),
-                description = f"Manpower of <@{user.id}> is {config['players'][user.id]['manpower']:,}".replace(",", " ")
-            )
-            embed.set_author(name="Manpower", icon_url=bot.user.avatar_url)
-            await ctx.send(embed=embed)
-        except:
-            print(traceback.format_exc())
-            await ctx.send(traceback.format_exc())
-
 
 
 class PlayerShop(commands.Cog):
@@ -1623,12 +1623,13 @@ class PlayerShop(commands.Cog):
 
             e_list = []
             index = 1
-            last = len(config["players"][user.id]["shop"])
-            for name in config["players"][user.id]["shop"]:
+            last = len(config["players"][user.id]["player_shop"])
+            for name in config["players"][user.id]["player_shop"]:
                 item = config["players"][user.id]["inventory"][name]
-                embed=discord.Embed(title=name, description=item["description"], color=0xffff00)
+                embed=discord.Embed(title=name, description=item["description"], color=rarity.__dict__[item["rarity"]])
                 embed.set_author(name="Player shop" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
-                embed.add_field(name="Price", value=config["players"][user.id]["shop"][name], inline=False)
+                embed.add_field(name="Price", value=config["players"][user.id]["player_shop"][name], inline=False)
+                embed.add_field(name="Rarity", value=item["rarity"], inline=True)
                 embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
                 embed.add_field(name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
                 embed.add_field(name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
@@ -1655,7 +1656,7 @@ class PlayerShop(commands.Cog):
                 await ctx.send(embed=embed)
                 return
 
-            config["players"][ctx.author.id]["shop"] = {**config["players"][ctx.author.id]["shop"], **{item: price}}
+            config["players"][ctx.author.id]["player_shop"] = {**config["players"][ctx.author.id]["player_shop"], **{item: price}}
 
             embed = discord.Embed(
                 colour = discord.Colour.from_rgb(255,255,0),
@@ -1670,18 +1671,19 @@ class PlayerShop(commands.Cog):
         config.save()
 
     @commands.command(name="player-buy", help="Sell items: player-buy <user: discord.Member> <item: str> <count: int>")
-    async def sell(self, ctx: Context, user: discord.Member, item: str):
+    async def player_buy(self, ctx: Context, user: discord.Member, item: str):
         try:
-            cost = config["players"][user.id]["shop"][item]
-            if config["players"][ctx.author.id]["balance"] >= cost:
-                config["players"][ctx.author.id]["inventory"][item] = config["players"][user.id]["shop"][item]
-                config["players"][ctx.author.id]["balance"] -= cost
+            cost = config["players"][user.id]["player_shop"][item]
+            if config["players"][ctx.author.id]["balance"] >= cost - (cost * config['players'][ctx.author.id]['stats']['bartering']*0.025):
+                config["players"][ctx.author.id]["inventory"][item] = config["players"][user.id]["inventory"][item]
+                config["players"][ctx.author.id]["balance"] -= cost - (cost * config['players'][ctx.author.id]['stats']['bartering']*0.025)
                 config["players"][user.id]["balance"] += cost
-                del config["players"][user.id]["shop"][item]
+                del config["players"][user.id]["player_shop"][item]
+                del config["players"][user.id]["inventory"][item]
 
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
-                    description = f"✅ Bought {item} for {cost:,}{config['currency_symbol']} and item was added to your inventory".replace(",", " ")
+                    description = f"✅ Bought {item} for {cost:,}{config['currency_symbol']} and item was added to your inventory\nTrading discount: `{config['players'][ctx.author.id]['stats']['bartering']*2.5}%`".replace(",", " ")
                 )
                 embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
@@ -1711,7 +1713,7 @@ class Inventory(commands.Cog):
             last = len(config["players"][ctx.author.id]["inventory"])
             for name in config["players"][ctx.author.id]["inventory"]:
                 item = config["players"][ctx.author.id]["inventory"][name]
-                embed=discord.Embed(title=name, description=item["description"], color=rarity.__dict__[item["rarity"]])
+                embed=discord.Embed(title=name, description=item["description"] if item["description"] != None else "", color=rarity.__dict__[item["rarity"]])
                 embed.set_author(name="Inventory" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
                 embed.add_field(name="Type", value=item["type"], inline=True)
                 embed.add_field(name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
@@ -1955,23 +1957,31 @@ class Player(commands.Cog):
     @commands.command(name="skill-add", help="Show level, Xp and progress to another level")
     async def skill_add(self, ctx: Context, skill: str, value: int = 1):
         try:
-            if config["players"][ctx.author.id]["skillpoints"] >= value:
-                config["players"][ctx.author.id]["stats"][skill.lower()] += value
-                config["players"][ctx.author.id]["skillpoints"] -= value
+            if skill.lower() in config["players"][ctx.author.id]["stats"]:
+                if config["players"][ctx.author.id]["skillpoints"] >= value:
+                    config["players"][ctx.author.id]["stats"][skill.lower()] += value
+                    config["players"][ctx.author.id]["skillpoints"] -= value
 
-                embed = discord.Embed(
-                    colour = discord.Colour.from_rgb(255,255,0),
-                    description = f'Skill point used: {skill} = {config["players"][ctx.author.id]["stats"][skill.lower()]}'
-                )
-                embed.set_author(name="Skillpoints", icon_url=bot.user.avatar_url)
-                await ctx.send(embed=embed)
-                config.save()
+                    embed = discord.Embed(
+                        colour = discord.Colour.from_rgb(255,255,0),
+                        description = f'Skill point used: {skill} = {config["players"][ctx.author.id]["stats"][skill.lower()]}'
+                    )
+                    embed.set_author(name="Add skill", icon_url=bot.user.avatar_url)
+                    await ctx.send(embed=embed)
+                    config.save()
+                else:
+                    embed = discord.Embed(
+                        colour = discord.Colour.from_rgb(255,255,0),
+                        description = f'Not enought skillpoints'
+                    )
+                    embed.set_author(name="Add skill", icon_url=bot.user.avatar_url)
+                    await ctx.send(embed=embed)
             else:
                 embed = discord.Embed(
                     colour = discord.Colour.from_rgb(255,255,0),
-                    description = f'Not enought skillpoints'
+                    description = f'No skill named {skill} found'
                 )
-                embed.set_author(name="Skillpoints", icon_url=bot.user.avatar_url)
+                embed.set_author(name="Add skill", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
         except:
             print(traceback.format_exc())
@@ -2080,6 +2090,77 @@ class Missions(commands.Cog):
 
 
 
+class Battle(commands.Cog):
+    "Combat system"
+
+    @commands.command(name="manpower", help="Show manpower of user", aliases=["mp","power"])
+    async def manpower(self, ctx: Context, user: discord.Member = None):
+        try:
+            if user == None:
+                user = ctx.author
+
+            manpower = int(config['players'][user.id]['manpower'] + (config['players'][user.id]['manpower']*config['players'][ctx.author.id]['stats']['warlord']*0.025))
+
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"Manpower of <@{user.id}> is {manpower:,}\nWarlord boost: `{config['players'][ctx.author.id]['stats']['warlord']*2.5}%`".replace(",", " ")
+            )
+            embed.set_author(name="Manpower", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="attack")
+    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: int, player_support: int = 0, enemy_support: int = 0):
+        time = datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime(r'%H:%M:%S')
+        pstart, estart = player_manpower, enemy_manpower
+        seconds = hours * 3600
+        await asyncio.sleep(delay=seconds)
+        await ctx.send("Battle started")
+
+        if player_support > 0:
+            player_support_roll = random.randint(0, player_support)
+            enemy_manpower -= player_support_roll
+
+        if enemy_support > 0:
+            enemy_support_roll = random.randint(0, enemy_support)
+            player_manpower -= enemy_support_roll
+
+        iteration = 1
+
+        while iteration <= 3:
+            if enemy_manpower > 0 and player_manpower > 0:
+                print(f"Rolling: {player_manpower} | {enemy_manpower}: roll - {iteration}")
+                player_roll = random.randint(0, player_manpower)
+                enemy_manpower -= player_roll
+                enemy_manpower = max(enemy_manpower, 0)
+
+                if enemy_manpower > 0:
+                    enemy_roll = random.randint(0, enemy_manpower)
+                    player_manpower -= enemy_roll
+
+                player_manpower = max(player_manpower, 0)
+
+            iteration += 1
+
+        if iteration == 4 and player_manpower > 0 and enemy_manpower > 0:
+            msg = "❌ Out of rolls"
+        elif player_manpower > 0 and enemy_manpower == 0:
+            msg = "✅ You won"
+        elif player_manpower == 0 and enemy_manpower > 0:
+            msg = "❌ You lost"
+        else:
+            msg = "❓ Tie ❓"
+
+        embed = discord.Embed(
+            colour = discord.Colour.from_rgb(255,255,0),
+            description = f"<@{ctx.author.id}>´s attack from {time}\n\n{msg}\n\n`Before battle:`\n    Your army: {pstart:,}\n    Enemy army: {estart:,}\n\n`After battle:`\n    Your army: {player_manpower:,}\n    Enemy army: {enemy_manpower:,}\n\n`Casualties:`\n    Your army: {pstart-player_manpower:,}\n    Enemy army: {estart-enemy_manpower}".replace(",", " ")
+        )
+        embed.set_author(name="Attack", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
+
+
 bot.add_cog(Money())
 bot.add_cog(Income())
 bot.add_cog(Essentials())
@@ -2090,5 +2171,6 @@ bot.add_cog(PlayerShop())
 bot.add_cog(Inventory())
 bot.add_cog(Player())
 bot.add_cog(Missions())
+bot.add_cog(Battle())
 
 bot.run(os.environ["TRINITY"])
