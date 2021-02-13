@@ -5,3 +5,5 @@ log
 pop.json
 test/
 backups/
+env/
+venv/
