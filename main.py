@@ -180,6 +180,7 @@ members = list(config["players"].keys())
 roles = list(config["income"].keys())
 
 btime = config["backup_time"]
+asyncs_on_hold = 0
 
 @tasks.loop(seconds=btime)
 async def backup():
@@ -991,7 +992,7 @@ class Config(commands.Cog):
 
     @commands.command(name="config", help="Output config directory: config <path> [path]...", pass_context=True)
     @commands.has_permissions(administrator=True)
-    async def _config(self, ctx: Context, *message):
+    async def config_(self, ctx: Context, *message):
         try:
             message = list(message)
             for i in range(len(message)):
@@ -1283,6 +1284,11 @@ class Development(commands.Cog):
 
         channel = await member.create_dm()
         await channel.send(content)
+
+    @commands.command(name="asyncs-on-hold", help="Number of async events on hold: asyncs-on-hold", pass_context=True)
+    @commands.has_permissions(administrator=True)
+    async def asyncs_on_hold_(self, ctx: Context):
+        await ctx.send(asyncs_on_hold)
 
 
 
@@ -2112,10 +2118,28 @@ class Battle(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="attack")
-    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: int, player_support: int = 0, enemy_support: int = 0):
-        time = datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime(r'%H:%M:%S')
+    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, income: int = 0, income_role: discord.Role = None):
+        global time
+        global asyncs_on_hold
+        
+        random.seed(time.time())
+
+        asyncs_on_hold += 1
+        _time = datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime(r'%H:%M:%S')
         pstart, estart = player_manpower, enemy_manpower
         seconds = hours * 3600
+
+        embed=discord.Embed(title="Attack", description=f"<@{ctx.author.id}>", color=discord.Colour.from_rgb(255,255,0))
+        embed.set_author(name="Succesfully added to queue", icon_url=bot.user.avatar_url)
+        embed.add_field(name="Time", value=(datetime.datetime.now(tz=pytz.timezone('Europe/Prague')) + datetime.timedelta(hours=hours)).strftime(r'%H:%M:%S'), inline=False)
+        embed.add_field(name="Your manpower", value=player_manpower, inline=False)
+        embed.add_field(name="Enemy manpower", value=enemy_manpower, inline=False)
+        embed.add_field(name="Your support", value=player_support, inline=False)
+        embed.add_field(name="Enemy support", value=enemy_support, inline=False)
+        embed.add_field(name="Role getting income", value=f"<&{income_role}>" if income_role != None else "None", inline=False)
+        embed.add_field(name="Income", value=income, inline=False)
+        await ctx.send(embed=embed)
+
         await asyncio.sleep(delay=seconds)
         await ctx.send("Battle started")
 
@@ -2132,12 +2156,16 @@ class Battle(commands.Cog):
         while iteration <= 3:
             if enemy_manpower > 0 and player_manpower > 0:
                 print(f"Rolling: {player_manpower} | {enemy_manpower}: roll - {iteration}")
+                e_before_roll = enemy_manpower
                 player_roll = random.randint(0, player_manpower)
                 enemy_manpower -= player_roll
                 enemy_manpower = max(enemy_manpower, 0)
 
                 if enemy_manpower > 0:
                     enemy_roll = random.randint(0, enemy_manpower)
+                    player_manpower -= enemy_roll
+                if enemy_manpower == 0:
+                    enemy_roll = random.randint(0, e_before_roll)
                     player_manpower -= enemy_roll
 
                 player_manpower = max(player_manpower, 0)
@@ -2148,6 +2176,9 @@ class Battle(commands.Cog):
             msg = "❌ Out of rolls"
         elif player_manpower > 0 and enemy_manpower == 0:
             msg = "✅ You won"
+
+            if income_role != None:
+                config["income"][income_role.id] += income
         elif player_manpower == 0 and enemy_manpower > 0:
             msg = "❌ You lost"
         else:
@@ -2155,10 +2186,14 @@ class Battle(commands.Cog):
 
         embed = discord.Embed(
             colour = discord.Colour.from_rgb(255,255,0),
-            description = f"<@{ctx.author.id}>´s attack from {time}\n\n{msg}\n\n`Before battle:`\n    Your army: {pstart:,}\n    Enemy army: {estart:,}\n\n`After battle:`\n    Your army: {player_manpower:,}\n    Enemy army: {enemy_manpower:,}\n\n`Casualties:`\n    Your army: {pstart-player_manpower:,}\n    Enemy army: {estart-enemy_manpower}".replace(",", " ")
+            description = f"<@{ctx.author.id}>´s attack from {_time}\n\n{msg}\n\n`Before battle:`\n    Your army: {pstart:,}\n    Enemy army: {estart:,}\n\n`After battle:`\n    Your army: {player_manpower:,}\n    Enemy army: {enemy_manpower:,}\n\n`Casualties:`\n    Your army: {pstart-player_manpower:,}\n    Enemy army: {estart-enemy_manpower}".replace(",", " ")
         )
         embed.set_author(name="Attack", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
+
+        asyncs_on_hold -= 1
+        config.save()
+        
 
 
 bot.add_cog(Money())
