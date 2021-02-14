@@ -1769,7 +1769,7 @@ class Inventory(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="equiped", help="Shows your 'realy usefull' items in your inventory: inventory")
+    @commands.command(name="equiped", help="Shows your equiped items: equiped")
     async def equiped(self, ctx: Context):
         try:
             e_list = []
@@ -1934,7 +1934,7 @@ class Inventory(commands.Cog):
 
 class Player(commands.Cog):
     "Leveling up, upgrading stats"
-    @commands.command(name="skills", help="Show player shop: player-shop <player: discord.Member>", aliases=["stats"])
+    @commands.command(name="skills", help="Show list of skills: skills", aliases=["stats"])
     async def stats(self, ctx: Context):
         try:
             player = config["players"][ctx.author.id]["stats"]
@@ -1983,7 +1983,7 @@ class Player(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="skill-add", help="Show level, Xp and progress to another level")
+    @commands.command(name="skill-add", help="Spend skillpoints for skills: skill-add <skill> [value=1]")
     async def skill_add(self, ctx: Context, skill: str, value: int = 1):
         try:
             if skill.lower() in config["players"][ctx.author.id]["stats"]:
