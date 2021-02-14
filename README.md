@@ -168,6 +168,7 @@ remove-mission          Remove mission: remove-mission <mission: str>
 level                   Show level, Xp and progress to another level: level
 skill-add               Spend skillpoints for skills: skill-add
 skills                  Show list of skills: [skills|stats]
+skillpoints             Number of your skillpoints: skillpoints
 ```
 
 <h3>Settings</h3>

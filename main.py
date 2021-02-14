@@ -2016,6 +2016,19 @@ class Player(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
+    @commands.command(name="skillpoints", help="Number of your skillpoints: skillpoints")
+    async def skillpoints(self, ctx: Context):
+        try:
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f'Your skillpoints: {config["players"][ctx.author.id]["skillpoints"]}'
+            )
+            embed.set_author(name="Skillpoints", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
 
 
 class Missions(commands.Cog):
