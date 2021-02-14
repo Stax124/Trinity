@@ -4,6 +4,7 @@ import re
 import os
 import json
 import datetime
+from discord.member import Member
 import pytz
 import random
 import time
@@ -72,14 +73,14 @@ async def levelup_check(ctx: Context):
             colour = discord.Colour.from_rgb(255,255,0),
             description = f'You are now level `{config["players"][player.id]["level"] + 1}`'
         )
-        embed.set_author(name="Levelup", icon_url=bot.user.avatar_url)
+        embed.set_author(name="Level up", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
         config["players"][player.id]["xp"] -= xp_for_level
         config["players"][player.id]["level"] += 1
         config["players"][player.id]["skillpoints"] += 1
         await levelup_check(ctx)
 
-class Config():
+class Configuration():
     "Class for maintaining configuration information and files"
     def print_timestamp(self,*_str):
         print(f"{c.bold}[{c.end}{c.warning}{datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime('%H:%M:%S')}{c.end}{c.bold}]{c.end}", *_str)
@@ -90,7 +91,7 @@ class Config():
             self.print_timestamp(f"{c.bold}Loading:{c.end} {c.okgreen}{self.CONFIG}{c.end}")
             self.config = json.load(open(self.CONFIG), object_hook=jsonKeys2int)
             type(self.config.keys())
-        except Exception as e:
+        except:
             self.print_timestamp(traceback.format_exc())
             self.print_timestamp(f"{c.warning}Config is unavailable or protected.{c.end} {c.bold}Loading fallback...{c.end}")
             self.config = self.fallback
@@ -98,7 +99,7 @@ class Config():
             try:
                 self.print_timestamp(f"{c.bold}Creating new config file:{c.end} {c.okgreen}{self.CONFIG}{c.end}")
                 self.save()
-            except Exception as e:
+            except:
                 self.print_timestamp(traceback.format_exc())
                 self.print_timestamp(f"{c.fail}Error writing config file, please check if you have permission to write in this location:{c.end} {c.bold}{self.CONFIG}{c.end}")
                 return
@@ -169,7 +170,7 @@ class Config():
 
 
 #region Initialize
-config = Config()
+config = Configuration()
 config.load()
 
 ADMIN = config["admin_role_name"]
@@ -180,7 +181,7 @@ members = list(config["players"].keys())
 roles = list(config["income"].keys())
 
 btime = config["backup_time"]
-asyncs_on_hold = 0
+asyncs_on_hold = []
 
 @tasks.loop(seconds=btime)
 async def backup():
@@ -1074,7 +1075,7 @@ class Config(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="set", help="Change values in config. You rather know what ya doin!: set <path> [path]... = <value>", pass_context=True)
+    @commands.command(name="set", help="Change values in config. You rather know what ya doin!: set <path> [path]... { = | < | > } <value>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def set(self, ctx: Context, *message):
         try:
@@ -1111,16 +1112,38 @@ class Config(commands.Cog):
                     break
 
             current = config.config
-            last = message[message.index("=") - 1]
+            mode = None
+            try:
+                last = message[message.index("=") - 1]
+                mode = "set"
+            except:
+                try:
+                    last = message[message.index(">") - 1]
+                    mode = "add"
+                except:
+                    last = message[message.index("<") - 1]
+                    mode = "remove"
             for word in message:
                 if word == last:
                     try:
-                        current[last] = int(message[-1])
+                        if mode == "set":
+                                current[last] = int(message[-1])
+                        elif mode == "add":
+                            current[last] += int(message[-1])
+                        else:
+                            current[last] -= int(message[-1])
                     except:
                         try:
-                            current[last] = float(message[-1])
+                            if mode == "set":
+                                current[last] = float(message[-1])
+                            elif mode == "add":
+                                current[last] += float(message[-1])
+                            else:
+                                current[last] -= float(message[-1])
                         except:
                             current[last] = message[-1]
+                        finally:
+                            mode = None
                     embed = discord.Embed(
                         colour = discord.Colour.from_rgb(255,255,0),
                         description = "Success"
@@ -1412,7 +1435,7 @@ class Settings(commands.Cog):
 
     @commands.command(name="bravo-six-going-dark", help="Deletes messages: bravo-six-going-dark <messages: integer>", pass_context=True)
     @commands.has_permissions(administrator=True)
-    async def deltatime(self, ctx: Context, messages: int):
+    async def bravo_six_going_dark(self, ctx: Context, messages: int):
         await ctx.channel.purge(limit=messages)
 
     @commands.command(name="on-join-dm", help="Set message to be send when player joins: on-join-dm <message: str>", pass_context=True)
@@ -1939,7 +1962,7 @@ class Player(commands.Cog):
             level = config["players"][ctx.author.id]["level"]
 
             xp_for_level = config["xp_for_level"]
-            for i in range(level):
+            for _ in range(level):
                 xp_for_level *= config["level_multiplier"]
 
             xp_for_level = int(xp_for_level)
@@ -2004,6 +2027,7 @@ class Missions(commands.Cog):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
         fparser.add_argument("cost", type=int)
+        fparser.add_argument("hours", type=int)
         fparser.add_argument("--manpower", type=int, default=0)
         fparser.add_argument("--level", type=int, default=0)
         fparser.add_argument("--chance", type=int, default=100)
@@ -2021,6 +2045,7 @@ class Missions(commands.Cog):
         try:
             config["missions"][fargs.name] = {
                 "cost": fargs.cost,
+                "hours": fargs.hours,
                 "manpower": fargs.manpower,
                 "level": fargs.level,
                 "chance": fargs.chance,
@@ -2032,6 +2057,7 @@ class Missions(commands.Cog):
             embed=discord.Embed(title=fargs.name, description=fargs.description, color=discord.Colour.from_rgb(255,255,0))
             embed.set_author(name="Succesfully added to missions", icon_url=bot.user.avatar_url)
             embed.add_field(name="Cost", value=f"{fargs.cost:,}".replace(",", " "), inline=True)
+            embed.add_field(name="Hours", value=f"{fargs.hours:,}".replace(",", " "), inline=True)
             embed.add_field(name="Required manpower", value=f"{fargs.manpower:,}".replace(",", " "), inline=True)
             embed.add_field(name="Required Level", value=fargs.level, inline=True)
             embed.add_field(name="Chance", value=str(fargs.chance) + "%", inline=True)
@@ -2094,6 +2120,82 @@ class Missions(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
+    @commands.command(name="mission", help="Start a mission: mission", aliases=["mission-start"])
+    async def mission_start(self, ctx: Context, mission_name: str):
+        global time
+        global asyncs_on_hold
+
+        user = ctx.author
+        mission = config["missions"][mission_name]
+
+        if not config["players"][user.id]["level"] >= mission["level"]:
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"❌ Your level is too low"
+            )
+            embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+            return
+        
+        if not config["players"][user.id]["balance"] >= mission["cost"]:
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"❌ Not enought money"
+            )
+            embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+            return
+
+        if not config["players"][user.id]["manpower"] >= mission["manpower"]:
+            embed = discord.Embed(
+                colour = discord.Colour.from_rgb(255,255,0),
+                description = f"❌ Not enought manpower"
+            )
+            embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+            return
+
+        config["players"][user.id]["balance"] -= mission["cost"]
+        config["players"][user.id]["manpower"] -= mission["manpower"]
+        
+        random.seed(time.time())
+
+        _time = datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime(r'%H:%M:%S')
+        a_time = (datetime.datetime.now(tz=pytz.timezone('Europe/Prague')) + datetime.timedelta(hours=mission["hours"])).strftime(r'%H:%M:%S')
+        asyncs_on_hold.append(a_time)
+        seconds = mission["hours"] * 3600
+
+        embed=discord.Embed(title=mission_name, description=mission["description"] if mission["description"] != None else "", color=discord.Colour.from_rgb(255,255,0))
+        embed.set_author(name="Succesfully added to queue", icon_url=bot.user.avatar_url)
+        embed.add_field(name="Time", value=(datetime.datetime.now(tz=pytz.timezone('Europe/Prague')) + datetime.timedelta(hours=mission["hours"])).strftime(r'%H:%M:%S'), inline=False)
+        embed.add_field(name="Manpower on hold", value=mission["manpower"], inline=False)
+        embed.add_field(name="Required level", value=mission["level"], inline=False)
+        embed.add_field(name="Chance", value=mission["chance"], inline=False)
+        embed.add_field(name="XP", value=mission["xp"], inline=False)
+        await ctx.send(embed=embed)
+
+        await asyncio.sleep(delay=seconds)
+        await ctx.send("Mission started")
+
+        if random.randint(0,100) < mission["chance"]:
+            msg = "✅ Successs"
+            config["players"][user.id]["xp"] += mission["xp"]
+            await levelup_check(ctx)
+        else:
+            msg = "❌ Failed"
+
+        embed = discord.Embed(
+            colour = discord.Colour.from_rgb(255,255,0),
+            description = f"<@{user.id}>´s mission from {_time}\n\n{msg}".replace(",", " ")
+        )
+        embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
+
+        config["players"][user.id]["manpower"] += mission["manpower"]
+
+        asyncs_on_hold.remove(a_time)
+        config.save()
+
 
 
 class Battle(commands.Cog):
@@ -2117,15 +2219,16 @@ class Battle(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="attack")
+    @commands.command(name="attack", help="Automatized battle system")
     async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, income: int = 0, income_role: discord.Role = None):
         global time
         global asyncs_on_hold
         
         random.seed(time.time())
 
-        asyncs_on_hold += 1
         _time = datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime(r'%H:%M:%S')
+        a_time = (datetime.datetime.now(tz=pytz.timezone('Europe/Prague')) + datetime.timedelta(hours=hours)).strftime(r'%H:%M:%S')
+        asyncs_on_hold.append(a_time)
         pstart, estart = player_manpower, enemy_manpower
         seconds = hours * 3600
 
@@ -2178,7 +2281,10 @@ class Battle(commands.Cog):
             msg = "✅ You won"
 
             if income_role != None:
-                config["income"][income_role.id] += income
+                if income >= 200000:
+                    ctx.send("Income too high, ask admin to add it")
+                else:
+                    config["income"][income_role.id] += income
         elif player_manpower == 0 and enemy_manpower > 0:
             msg = "❌ You lost"
         else:
@@ -2191,7 +2297,7 @@ class Battle(commands.Cog):
         embed.set_author(name="Attack", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
 
-        asyncs_on_hold -= 1
+        asyncs_on_hold.remove(a_time)
         config.save()
         
 
