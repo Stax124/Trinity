@@ -20,6 +20,10 @@ from discord import NotFound
 from discord.utils import get
 from pretty_help import PrettyHelp
 import DiscordUtils
+import logging
+
+
+logging.basicConfig(level=logging.INFO)
 
 
 class c:
@@ -49,10 +53,6 @@ def jsonKeys2int(x):
         except:
             pass
     return x
-
-
-def print_timestamp(*_str):
-    print(f"{c.bold}[{c.end}{c.warning}{datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime(r'%H:%M:%S')}{c.end}{c.bold}]{c.end}", *_str)
 
 
 def sizeof_fmt(num, suffix='B'):
@@ -90,33 +90,30 @@ async def levelup_check(ctx: Context):
 class Configuration():
     "Class for maintaining configuration information and files"
 
-    def print_timestamp(self, *_str):
-        print(f"{c.bold}[{c.end}{c.warning}{datetime.datetime.now(tz=pytz.timezone('Europe/Prague')).strftime('%H:%M:%S')}{c.end}{c.bold}]{c.end}", *_str)
-
     def load(self):
-        self.print_timestamp(f"{c.bold}Loading config...{c.end}")
+        logging.info(f"{c.bold}Loading config...{c.end}")
         try:
-            self.print_timestamp(
+            logging.info(
                 f"{c.bold}Loading:{c.end} {c.okgreen}{self.CONFIG}{c.end}")
             self.config = json.load(
                 open(self.CONFIG), object_hook=jsonKeys2int)
             type(self.config.keys())
         except:
-            self.print_timestamp(traceback.format_exc())
-            self.print_timestamp(
+            logging.info(traceback.format_exc())
+            logging.info(
                 f"{c.warning}Config is unavailable or protected.{c.end} {c.bold}Loading fallback...{c.end}")
             self.config = self.fallback
-            self.print_timestamp(f"{c.bold}Fallback loaded{c.end}")
+            logging.info(f"{c.bold}Fallback loaded{c.end}")
             try:
-                self.print_timestamp(
+                logging.info(
                     f"{c.bold}Creating new config file:{c.end} {c.okgreen}{self.CONFIG}{c.end}")
                 self.save()
             except:
-                self.print_timestamp(traceback.format_exc())
-                self.print_timestamp(
+                logging.info(traceback.format_exc())
+                logging.info(
                     f"{c.fail}Error writing config file, please check if you have permission to write in this location:{c.end} {c.bold}{self.CONFIG}{c.end}")
                 return
-        self.print_timestamp(f"{c.bold}Config loaded{c.end}")
+        logging.info(f"{c.bold}Config loaded{c.end}")
 
     def __init__(self):
         if platform.system() == "Windows":
@@ -159,8 +156,8 @@ class Configuration():
             with open(self.CONFIG, "w") as f:
                 json.dump(self.config, f, indent=4)
         except:
-            self.print_timestamp(traceback.format_exc())
-            self.print_timestamp(f"Unable to save data to {self.CONFIG}")
+            logging.info(traceback.format_exc())
+            logging.info(f"Unable to save data to {self.CONFIG}")
 
     def json_str(self):
         return json.dumps(self.config)
@@ -172,7 +169,7 @@ class Configuration():
         try:
             return self.config[name]
         except:
-            self.print_timestamp(
+            logging.info(
                 f"{c.bold}{name}{c.end} {c.warning}not found in config, trying to get from fallback{c.end}")
             self.config[name] = self.fallback[name]
             self.save()
@@ -213,31 +210,31 @@ async def backup():
         files = [int(x) for x in files]
         files.sort(reverse=True)
         if len(files) >= config["backups"]:
-            print_timestamp(f"Deleting {files[-1]}")
+            logging.info(f"Deleting {files[-1]}")
             os.remove("./backups/"+str(files[-1]))
             try:
-                print_timestamp("Saving backup")
+                logging.info("Saving backup")
                 with open("./backups/"+str(int(time.time())), "w") as f:
                     json.dump(config.config, f, indent=4)
             except:
-                print_timestamp(traceback.format_exc())
-                print_timestamp(f"Unable to save data to {config.CONFIG}")
+                logging.info(traceback.format_exc())
+                logging.info(f"Unable to save data to {config.CONFIG}")
         else:
             try:
-                print_timestamp("Saving backup")
+                logging.info("Saving backup")
                 with open("./backups/"+str(int(time.time())), "w") as f:
                     json.dump(config.config, f, indent=4)
             except:
-                print_timestamp(traceback.format_exc())
-                print_timestamp(f"Unable to save data to {config.CONFIG}")
+                logging.info(traceback.format_exc())
+                logging.info(f"Unable to save data to {config.CONFIG}")
     else:
         try:
-            print_timestamp("Saving backup")
+            logging.info("Saving backup")
             with open("./backups/"+str(int(time.time())), "w") as f:
                 json.dump(config.config, f, indent=4)
         except:
-            print_timestamp(traceback.format_exc())
-            print_timestamp(f"Unable to save data to {config.CONFIG}")
+            logging.info(traceback.format_exc())
+            logging.info(f"Unable to save data to {config.CONFIG}")
 
 backup.start()
 # endregion
@@ -246,12 +243,12 @@ backup.start()
 # region Events
 @bot.event
 async def on_ready():
-    print_timestamp(
+    logging.info(
         f'{c.bold}Initialized:{c.end} {c.okgreen}{bot.user}{c.end} - {c.okblue}{bot.user.id}{c.end}')
     for member in bot.guilds[0].members:
         if not member.id in config["players"]:
             members.append(member.id)
-            print_timestamp(
+            logging.info(
                 f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
             config["players"][member.id] = {}
             config["players"][member.id]["balance"] = config["default_balance"]
@@ -273,7 +270,7 @@ async def on_ready():
             }
 
             for item in list(config["upgrade"].keys()):
-                print_timestamp(
+                logging.info(
                     f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
                 config["players"][member.id]["upgrade"][item] = 0
                 config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
@@ -282,76 +279,76 @@ async def on_ready():
             config["players"][member.id]["balance"]
         except:
             config["players"][member.id]["balance"] = config["default_balance"]
-            print_timestamp(f"Config: balance => {member.name}({member.id})")
+            logging.info(f"Config: balance => {member.name}({member.id})")
 
         try:
             config["missions"]
         except:
             config["missions"] = {}
-            print_timestamp(f"Config: missions => config")
+            logging.info(f"Config: missions => config")
 
         try:
             config["players"][member.id]["last-work"]
         except:
             config["players"][member.id]["last-work"] = 0
-            print_timestamp(f"Config: last-work => {member.name}({member.id})")
+            logging.info(f"Config: last-work => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["manpower"]
         except:
             config["players"][member.id]["manpower"] = 0
-            print_timestamp(f"Config: manpower => {member.name}({member.id})")
+            logging.info(f"Config: manpower => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["xp"]
         except:
             config["players"][member.id]["xp"] = 0
-            print_timestamp(f"Config: xp => {member.name}({member.id})")
+            logging.info(f"Config: xp => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["skillpoints"]
         except:
             config["players"][member.id]["skillpoints"] = 0
-            print_timestamp(
+            logging.info(
                 f"Config: skillpoints => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["level"]
         except:
             config["players"][member.id]["level"] = 1
-            print_timestamp(f"Config: level => {member.name}({member.id})")
+            logging.info(f"Config: level => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["upgrade"]
         except:
             config["players"][member.id]["upgrade"] = {}
-            print_timestamp(f"Config: upgrade => {member.name}({member.id})")
+            logging.info(f"Config: upgrade => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["maxupgrade"]
         except:
             config["players"][member.id]["maxupgrade"] = {}
-            print_timestamp(
+            logging.info(
                 f"Config: maxupgrade => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["player_shop"]
         except:
             config["players"][member.id]["player_shop"] = {}
-            print_timestamp(
+            logging.info(
                 f"Config: player_shop => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["inventory"]
         except:
             config["players"][member.id]["inventory"] = {}
-            print_timestamp(f"Config: inventory => {member.name}({member.id})")
+            logging.info(f"Config: inventory => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["equiped"]
         except:
             config["players"][member.id]["equiped"] = {}
-            print_timestamp(f"Config: equiped => {member.name}({member.id})")
+            logging.info(f"Config: equiped => {member.name}({member.id})")
 
         try:
             config["players"][member.id]["stats"]
@@ -365,29 +362,28 @@ async def on_ready():
                 "bartering": 0,
                 "learning": 0
             }
-            print_timestamp(f"Config: stats => {member.name}({member.id})")
+            logging.info(f"Config: stats => {member.name}({member.id})")
 
     for role in bot.guilds[0].roles:
         if not (role.id in roles):
-            print_timestamp(f"{c.bold}{role}{c.end} added to config")
+            logging.info(f"{c.bold}{role}{c.end} added to config")
             config["income"][role.id] = 0
 
     config.save()
-    print_timestamp(f"{c.bold}Members:{c.end} {c.okgreen}{members}{c.end}")
-    print_timestamp(
+    logging.info(f"{c.bold}Members:{c.end} {c.okgreen}{members}{c.end}")
+    logging.info(
         f"{c.bold}Roles:{c.end} {c.okgreen}{list(config['income'].keys())}{c.end}")
-    print_timestamp(
+    logging.info(
         f"{c.bold}Upgrades:{c.end} {c.okgreen}{list(config['upgrade'].keys())}{c.end}")
     print(f"\n{c.bold}{'-'*100}{c.end}\n")
 
     await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}"))
-    print_timestamp()
 
 
 @bot.event
 async def on_message(message):
     if not message.author == bot.user:
-        print_timestamp(
+        logging.info(
             f"{c.bold}{message.author.display_name} ■ {message.author.id}:{c.end} {c.okgreen}{message.content}{c.end}")
         await bot.process_commands(message)
 
@@ -425,7 +421,7 @@ async def on_command_error(ctx, error):
 async def on_member_join(member: discord.Member):
     if not member.id in config.config["players"]:
         members.append(member.id)
-        print_timestamp(
+        logging.info(
             f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
         config["players"][member.id] = {}
         config["players"][member.id]["balance"] = config["default_balance"]
@@ -450,17 +446,17 @@ async def on_member_join(member: discord.Member):
         }
 
         for item in config["upgrade"].keys():
-            print_timestamp(
+            logging.info(
                 f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
             config.config["players"][member.id]["upgrade"][item] = 0
             config.config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
-    print_timestamp(
+    logging.info(
         f"{c.bold}{member.display_name} ■ {member.id}{c.end} joined")
 
     if config["join_dm"] != "":
         channel = await member.create_dm()
         await channel.send(config["join_dm"])
-        print_timestamp(f"Welcome message sent to {member}")
+        logging.info(f"Welcome message sent to {member}")
 
     config.save()
 # endregion
@@ -558,7 +554,7 @@ class Money(commands.Cog):
                         config["players"][ctx.author.id]["balance"] += income
                         config["players"][ctx.author.id]["last-work"] = time.time()
 
-                    print_timestamp(
+                    logging.info(
                         f"{c.bold}{ctx.author.display_name} ■ {ctx.author.id}{c.end} is working {c.warning}[timedelta={timedelta}, rate={rate}]{c.end}")
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
@@ -584,7 +580,7 @@ class Money(commands.Cog):
         try:
             if member.id in members:
                 config["players"][member]["balance"] = 0
-                print_timestamp(f"Resetting {member}'s balance")
+                logging.info(f"Resetting {member}'s balance")
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
                     description=f"Resetting <@{member.id}>'s balance"
@@ -600,7 +596,7 @@ class Money(commands.Cog):
                 embed.set_author(name="Reset money",
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
-                print_timestamp("Member not found")
+                logging.info("Member not found")
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -613,7 +609,7 @@ class Money(commands.Cog):
         try:
             if member.id in members:
                 config["players"][member.id]["balance"] -= abs(int(balance))
-                print_timestamp(
+                logging.info(
                     f"Removing {balance:,}{config['currency_symbol']} from {member}".replace(",", " "))
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
@@ -630,7 +626,7 @@ class Money(commands.Cog):
                 embed.set_author(name="Remove money",
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
-                print_timestamp("Member not found")
+                logging.info("Member not found")
             config.save()
         except:
             print(traceback.format_exc())
@@ -672,7 +668,7 @@ class Money(commands.Cog):
                 embed.set_author(name="Add money",
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
-                print_timestamp(f"Adding {balance} to {member}")
+                logging.info(f"Adding {balance} to {member}")
             else:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
@@ -681,7 +677,7 @@ class Money(commands.Cog):
                 embed.set_author(name="Add money",
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
-                print_timestamp("Member not found")
+                logging.info("Member not found")
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -692,10 +688,10 @@ class Money(commands.Cog):
     async def buy_upgrade(self, ctx: Context, type: str, value: int = 1):
         try:
             if type in config["upgrade"].keys():
-                if "require" in config["upgrade"].keys():
-                    required = config["upgrade"]["require"]
+                if "require" in config["upgrade"][type].keys():
+                    required = config["upgrade"][type]["require"]
                     player_own_required = True if config["players"][
-                        ctx.author.id]["upgrade"][required] >= 0 else False
+                        ctx.author.id]["upgrade"][required] > 0 else False
                 else:
                     required = None
 
@@ -815,7 +811,7 @@ class Money(commands.Cog):
                     embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
             else:
-                print_timestamp(f"{c.fail}Invalid type or value{c.end}")
+                logging.info(f"{c.fail}Invalid type or value{c.end}")
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
                     description="❌ Invalid type or value"
@@ -843,7 +839,7 @@ class Money(commands.Cog):
                             balance)
                         config.config["players"][member.id]["balance"] += int(
                             balance)
-                        print_timestamp(f"Paid {balance} to {member}")
+                        logging.info(f"Paid {balance} to {member}")
                         embed = discord.Embed(
                             colour=discord.Colour.from_rgb(255, 255, 0),
                             description=f"✅ Paid {balance:,}{config['currency_symbol']} to <@{member.id}>".replace(
@@ -860,7 +856,7 @@ class Money(commands.Cog):
                         embed.set_author(
                             name="Pay", icon_url=bot.user.avatar_url)
                         await ctx.send(embed=embed)
-                        print_timestamp("Member not found")
+                        logging.info("Member not found")
                 else:
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
@@ -915,7 +911,7 @@ class Income(commands.Cog):
                     if config["income"][role.id] != 0:
                         income += config.config["income"][role.id]
                     else:
-                        print_timestamp(f"Excluding: {role.name}")
+                        logging.info(f"Excluding: {role.name}")
                 except:
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
@@ -959,7 +955,7 @@ class Income(commands.Cog):
                     _id = int(re.findall(pattern, role)[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{role} was replaced by {_user.id}")
                             role = _user.id
 
@@ -995,7 +991,7 @@ class Income(commands.Cog):
                     _id = int(re.findall(pattern, role)[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{role} was replaced by {_user.id}")
                             role = _user.id
 
@@ -1110,7 +1106,7 @@ class Config(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_user.id}")
                             message[i] = _user.id
                     break
@@ -1121,7 +1117,7 @@ class Config(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_user.id}")
                             message[i] = _user.id
                     break
@@ -1132,7 +1128,7 @@ class Config(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _role in _roles:
                         if _role.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_role.id}")
                             message[i] = _role.id
                     break
@@ -1199,7 +1195,7 @@ class Config(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_user.id}")
                             message[i] = _user.id
                     break
@@ -1210,7 +1206,7 @@ class Config(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_user.id}")
                             message[i] = _user.id
                     break
@@ -1221,7 +1217,7 @@ class Config(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _role in _roles:
                         if _role.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_role.id}")
                             message[i] = _role.id
                     break
@@ -1326,7 +1322,7 @@ class Development(commands.Cog):
                     config.config["players"][member.id]["maxupgrade"] = {}
 
                     for item in list(config.fallback["upgrade"].keys()):
-                        print_timestamp(
+                        logging.info(
                             f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
                         config.config["players"][member.id]["upgrade"][item] = 0
                         config.config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
@@ -1346,7 +1342,7 @@ class Development(commands.Cog):
 
             for role in bot.guilds[0].roles:
                 if not (role.id in roles):
-                    print_timestamp(f"{c.bold}{role}{c.end} added to config")
+                    logging.info(f"{c.bold}{role}{c.end} added to config")
                     config.config["income"][role.id] = 0
 
             embed = discord.Embed(
@@ -1372,7 +1368,7 @@ class Development(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_user.id}")
                             message[i] = _user.id
                     break
@@ -1383,7 +1379,7 @@ class Development(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _user in _users:
                         if _user.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_user.id}")
                             message[i] = _user.id
                     break
@@ -1394,7 +1390,7 @@ class Development(commands.Cog):
                     _id = int(re.findall(pattern, message[i])[0])
                     for _role in _roles:
                         if _role.id == _id:
-                            print_timestamp(
+                            logging.info(
                                 f"{message[i]} was replaced by {_role.id}")
                             message[i] = _role.id
                     break
@@ -1445,7 +1441,7 @@ class Settings(commands.Cog):
         )
         embed.set_author(name="Shutdown", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
-        print_timestamp("Shutting down...")
+        logging.info("Shutting down...")
         sys.exit()
 
     @commands.command(name="add-item", pass_context=True, help="Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] [--require REQUIRE] name cost")
@@ -1532,7 +1528,7 @@ class Settings(commands.Cog):
             config.config["prefix"] = prefix
             config.save()
             bot.command_prefix = prefix
-            print_timestamp(f"Prefix changed to {config['prefix']}")
+            logging.info(f"Prefix changed to {config['prefix']}")
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"✅ Prefix changed to {prefix}"
@@ -1736,7 +1732,15 @@ class Essentials(commands.Cog):
             e_list = []
             index = 1
             msg = ""
-            for item in config["upgrade"]:
+            _sorted_keys = list(config["upgrade"].keys())
+            _sorted_keys.sort(key=str.lower)
+
+            _sorted = {}
+
+            for item in _sorted_keys:
+                _sorted[item] = config["upgrade"][item]
+
+            for item in _sorted:
                 if "manpower" in config["upgrade"][item]:
                     if config["upgrade"][item]["manpower"] != 0:
                         manpower = f'`Manpower:` {config["upgrade"][item]["manpower"]}'
@@ -1744,7 +1748,8 @@ class Essentials(commands.Cog):
                         manpower = ""
                 else:
                     manpower = ""
-                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config["players"][ctx.author.id]["maxupgrade"][item] != None else 'Not limited'
+                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config[
+                    "players"][ctx.author.id]["maxupgrade"][item] != None else f'{config["players"][ctx.author.id]["upgrade"][item]}/Not limited'
                 msg += f'`{item}` {stock} `Cost:` {config["upgrade"][item]["cost"]:,}{config["currency_symbol"]} {manpower}\n'.replace(
                     ",", " ")
                 if index == 30:
@@ -2205,7 +2210,7 @@ class Player(commands.Cog):
 class Missions(commands.Cog):
     "Mission based game mechanics"
 
-    @commands.command(name="add-mission", help="Add new mission: add-mission [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--loot-table LOOT_TABLE] [--xp XP] name cost")
+    @commands.command(name="add-mission", help="Add new mission: add-mission [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--loot-table LOOT_TABLE] [--xp XP] [--description DESCRIPTION] name cost hours")
     @commands.has_permissions(administrator=True)
     async def add_mission(self, ctx: Context, *querry):
         fparser = argparse.ArgumentParser()

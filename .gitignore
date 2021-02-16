@@ -7,3 +7,6 @@ test/
 backups/
 env/
 venv/
+build/
+dist/
+bot.log
