@@ -1,40 +1,53 @@
-import discord
-import sys
-import re
-import os
-import json
-import datetime
-from discord.member import Member
-import pytz
-import random
-import time
-import platform
 import argparse
-import shlex
 import asyncio
+import datetime
+import json
+import logging
+import os
+import platform
+import random
+import re
+import shlex
+import sys
+import time
 import traceback
-from discord.ext import commands, tasks
-from discord.ext.commands.context import Context
-from discord.ext.commands import CommandNotFound
+from typing import Union
+
+import discord
+import DiscordUtils
+import pytz
 from discord import NotFound
+from discord.ext import commands, tasks
+from discord.ext.commands import CommandNotFound
+from discord.ext.commands.context import Context
+from discord.member import Member
 from discord.utils import get
 from pretty_help import PrettyHelp
-import DiscordUtils
-import logging
 
+# region Parser
+parser = argparse.ArgumentParser(
+    prog="Trinity", description="Economy discord bot made in python")
+parser.add_argument("-l", "--logging",  default="INFO",
+                    choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], help="Choose level of logging")
+parser.add_argument("-f", "--file", default="bot.log",
+                    type=str, help="Filename for logging")
+parser.add_argument("-m", "--mode", default="w",
+                    choices=["w", "a"], help="Write or append to file")
+parser.add_argument("--token", default=os.environ["TRINITY"], type=str,
+                    help="Discord API token: https://discord.com/developers/applications")
+args = parser.parse_args()
+# endregion
 
-logging.basicConfig(level=logging.INFO)
+loglevels = {
+    "DEBUG": logging.DEBUG,
+    "INFO": logging.INFO,
+    "WARNING": logging.WARNING,
+    "ERROR": logging.ERROR,
+    "CRITICAL:": logging.CRITICAL
+}
 
-
-class c:
-    header = '\033[95m'
-    okblue = '\033[94m'
-    okgreen = '\033[92m'
-    warning = '\033[93m'
-    fail = '\033[91m'
-    end = '\033[0m'
-    bold = '\033[1m'
-    underline = '\033[4m'
+logging.basicConfig(
+    level=loglevels[args.logging], handlers=[logging.FileHandler(args.file, args.mode, 'utf-8'), logging.StreamHandler(sys.stdout)])
 
 
 class rarity(object):
@@ -64,6 +77,7 @@ def sizeof_fmt(num, suffix='B'):
 
 
 async def levelup_check(ctx: Context):
+    logging.debug(f"Triggering levelup_check for {ctx.author.display_name}")
     player = ctx.author
     xp = config["players"][player.id]["xp"]
     level = config["players"][player.id]["level"]
@@ -84,6 +98,8 @@ async def levelup_check(ctx: Context):
         config["players"][player.id]["xp"] -= xp_for_level
         config["players"][player.id]["level"] += 1
         config["players"][player.id]["skillpoints"] += 1
+        logging.debug(
+            f"{ctx.author.display_name} is now level {config['players'][player.id]['level']}")
         await levelup_check(ctx)
 
 
@@ -91,29 +107,29 @@ class Configuration():
     "Class for maintaining configuration information and files"
 
     def load(self):
-        logging.info(f"{c.bold}Loading config...{c.end}")
+        logging.info(f"Loading config...")
         try:
             logging.info(
-                f"{c.bold}Loading:{c.end} {c.okgreen}{self.CONFIG}{c.end}")
+                f"Loading: {self.CONFIG}")
             self.config = json.load(
                 open(self.CONFIG), object_hook=jsonKeys2int)
             type(self.config.keys())
         except:
             logging.info(traceback.format_exc())
             logging.info(
-                f"{c.warning}Config is unavailable or protected.{c.end} {c.bold}Loading fallback...{c.end}")
+                f"Config is unavailable or protected. Loading fallback...")
             self.config = self.fallback
-            logging.info(f"{c.bold}Fallback loaded{c.end}")
+            logging.info(f"Fallback loaded")
             try:
                 logging.info(
-                    f"{c.bold}Creating new config file:{c.end} {c.okgreen}{self.CONFIG}{c.end}")
+                    f"Creating new config file: {self.CONFIG}")
                 self.save()
             except:
                 logging.info(traceback.format_exc())
                 logging.info(
-                    f"{c.fail}Error writing config file, please check if you have permission to write in this location:{c.end} {c.bold}{self.CONFIG}{c.end}")
+                    f"Error writing config file, please check if you have permission to write in this location: {self.CONFIG}")
                 return
-        logging.info(f"{c.bold}Config loaded{c.end}")
+        logging.info(f"Config loaded")
 
     def __init__(self):
         if platform.system() == "Windows":
@@ -128,33 +144,27 @@ class Configuration():
             "prefix": "-",
             "players": {},
             "currency_symbol": "$",
-            "admin_role_name": ["Admin", "Programátor"],
             "upgrade": {},
-            "maxupgrade": {
-                "doly-na-železo": 0,
-                "doly-na-uhlí": 0,
-                "ropná-plošina": 0,
-                "rafinérie": 5,
-                "továrna": 25,
-                "doly-na-uran": 0,
-                "reaktor": 1
-            },
+            "maxupgrade": {},
             "disabled_roles": ["@everyone"],
             "deltatime": 7200,
             "default_role": "",
-            "backup_time": 10800,
-            "backups": 3,
+            "backup_time": 43200,
+            "backups": 5,
             "work_range": 0,
             "join_dm": "",
             "default_balance": 0,
             "level_multiplier": 1.2,
-            "xp_for_level": 1000
+            "xp_for_level": 1000,
+            "maximum_attack_time": 48,
+            "allow_attack_income": True
         }
 
     def save(self):
         try:
             with open(self.CONFIG, "w") as f:
                 json.dump(self.config, f, indent=4)
+            logging.debug("Config saved")
         except:
             logging.info(traceback.format_exc())
             logging.info(f"Unable to save data to {self.CONFIG}")
@@ -166,27 +176,28 @@ class Configuration():
         return self.config
 
     def __getitem__(self, name: str):
+        logging.debug(f"Grabbing {name} from config")
         try:
             return self.config[name]
         except:
             logging.info(
-                f"{c.bold}{name}{c.end} {c.warning}not found in config, trying to get from fallback{c.end}")
+                f"{name} not found in config, trying to get from fallback")
             self.config[name] = self.fallback[name]
             self.save()
             return self.fallback[name]
 
     def __setitem__(self, key: str, val):
+        logging.debug(f"Setting {key} to {val}")
         self.config[key] = val
 
     def __delitem__(self, key: str):
+        logging.debug(f"Deleting {key} from config")
         self.config.pop(key)
 
 
 # region Initialize
 config = Configuration()
 config.load()
-
-ADMIN = config["admin_role_name"]
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or(config["prefix"]), help_command=PrettyHelp(
     color=discord.Colour.from_rgb(255, 255, 0), show_index=True, sort_commands=True))
@@ -201,10 +212,12 @@ members = []
 
 @tasks.loop(seconds=btime)
 async def backup():
+    logging.debug("Starting backup")
     if not os.path.exists("./backups"):
         os.mkdir("./backups")
 
     files = os.listdir("./backups")
+    logging.debug(f"Backup files: {files}")
 
     if not files == []:
         files = [int(x) for x in files]
@@ -244,12 +257,21 @@ backup.start()
 @bot.event
 async def on_ready():
     logging.info(
-        f'{c.bold}Initialized:{c.end} {c.okgreen}{bot.user}{c.end} - {c.okblue}{bot.user.id}{c.end}')
+        f'Initialized:{bot.user} - {bot.user.id}')
+
+    try:
+        config["loot-table"]
+    except:
+        config["loot-table"] = {}
+        logging.info(f"Config: loot-table => config")
+
     for member in bot.guilds[0].members:
         if not member.id in config["players"]:
             members.append(member.id)
             logging.info(
-                f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
+                f"Added {member.display_name} as {member.id}")
+            logging.debug(
+                f"Initializing config files for {member.display_name}")
             config["players"][member.id] = {}
             config["players"][member.id]["balance"] = config["default_balance"]
             config["players"][member.id]["last-work"] = 0
@@ -268,10 +290,12 @@ async def on_ready():
                 "bartering": 0,
                 "learning": 0
             }
+            logging.debug(
+                f"Config files for {member.display_name} initialized")
 
             for item in list(config["upgrade"].keys()):
                 logging.info(
-                    f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
+                    f"Added {item} to {member.display_name}")
                 config["players"][member.id]["upgrade"][item] = 0
                 config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
 
@@ -366,16 +390,16 @@ async def on_ready():
 
     for role in bot.guilds[0].roles:
         if not (role.id in roles):
-            logging.info(f"{c.bold}{role}{c.end} added to config")
+            logging.info(f"{role} added to config")
             config["income"][role.id] = 0
 
     config.save()
-    logging.info(f"{c.bold}Members:{c.end} {c.okgreen}{members}{c.end}")
+    logging.info(f"Members: {members}")
     logging.info(
-        f"{c.bold}Roles:{c.end} {c.okgreen}{list(config['income'].keys())}{c.end}")
+        f"Roles: {list(config['income'].keys())}")
     logging.info(
-        f"{c.bold}Upgrades:{c.end} {c.okgreen}{list(config['upgrade'].keys())}{c.end}")
-    print(f"\n{c.bold}{'-'*100}{c.end}\n")
+        f"Upgrades: {list(config['upgrade'].keys())}")
+    print(f"\n{'-'*100}\n")
 
     await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}"))
 
@@ -384,26 +408,27 @@ async def on_ready():
 async def on_message(message):
     if not message.author == bot.user:
         logging.info(
-            f"{c.bold}{message.author.display_name} ■ {message.author.id}:{c.end} {c.okgreen}{message.content}{c.end}")
+            f"{message.author.display_name} ■ {message.author.id}: {message.content}")
         await bot.process_commands(message)
 
 
 @bot.event
 async def on_guild_role_create(role):
     config["income"][role.id] = 0
-    print(f"New role added: {role.name}")
+    logging.info(f"New role added: {role.name}")
     config.save()
 
 
 @bot.event
 async def on_guild_role_delete(role):
     del config["income"][role.id]
-    print(f"Role removed: {role.name}")
+    logging.info(f"Role removed: {role.name}")
     config.save()
 
 
 @bot.event
 async def on_command_error(ctx, error):
+    logging.debug(f"Error occured: {error}")
     if isinstance(error, CommandNotFound):
         embed = discord.Embed(
             colour=discord.Colour.from_rgb(255, 255, 0),
@@ -412,8 +437,10 @@ async def on_command_error(ctx, error):
         embed.set_author(name="Status", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
     elif isinstance(error, NotFound):
+        logging.debug("Error 404, passing")
         pass
     else:
+        logging.debug("Error not catched, raising")
         raise error
 
 
@@ -422,7 +449,7 @@ async def on_member_join(member: discord.Member):
     if not member.id in config.config["players"]:
         members.append(member.id)
         logging.info(
-            f"Added {c.okgreen}{member.display_name}{c.end} as {c.bold}{member.id}{c.end}")
+            f"Added {member.display_name} as {member.id}")
         config["players"][member.id] = {}
         config["players"][member.id]["balance"] = config["default_balance"]
         config["players"][member.id]["last-work"] = 0
@@ -447,11 +474,11 @@ async def on_member_join(member: discord.Member):
 
         for item in config["upgrade"].keys():
             logging.info(
-                f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
+                f"Added {item} to {member.display_name}")
             config.config["players"][member.id]["upgrade"][item] = 0
             config.config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
     logging.info(
-        f"{c.bold}{member.display_name} ■ {member.id}{c.end} joined")
+        f"{member.display_name} ■ {member.id} joined")
 
     if config["join_dm"] != "":
         channel = await member.create_dm()
@@ -467,6 +494,7 @@ class Money(commands.Cog):
 
     @commands.command(name="leaderboard", help="Show da leaderboard: l, lb, leaderboard", aliases=["lb", "l"])
     async def leaderboard(self, ctx: Context):
+        logging.debug("Displaying leaderboard")
         try:
             players = {}
             for player in config["players"]:
@@ -513,6 +541,7 @@ class Money(commands.Cog):
 
     @commands.command(name="work", help="What are you doing, make some money!: work")
     async def user_work(self, ctx: Context):
+        logging.debug(f"{ctx.author.display_name} executing work")
         try:
             if time.time() >= config["players"][ctx.author.id]["last-work"] + config["deltatime"]:
                 income = 0
@@ -555,13 +584,15 @@ class Money(commands.Cog):
                         config["players"][ctx.author.id]["last-work"] = time.time()
 
                     logging.info(
-                        f"{c.bold}{ctx.author.display_name} ■ {ctx.author.id}{c.end} is working {c.warning}[timedelta={timedelta}, rate={rate}]{c.end}")
+                        f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}]")
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
                         description=f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus: `{config['players'][ctx.author.id]['stats']['stewardship']*2.5}%`".replace(",", " ")
                     )
                     embed.set_author(name="Work", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
+                    logging.debug(
+                        f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}], symbol={config['currency_symbol']}, next={datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}, boost={income_boost}, multiplier={income_multiplier}, stewardship={config['players'][ctx.author.id]['stats']['stewardship']*2.5}%")
             else:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
@@ -577,6 +608,7 @@ class Money(commands.Cog):
     @commands.command(name="reset-money", help="Reset balance of target: reset-money <user: discord.Member>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def reset_money(self, ctx: Context, member: discord.Member):
+        logging.debug(f"Resetting balance of {member.display_name}")
         try:
             if member.id in members:
                 config["players"][member]["balance"] = 0
@@ -606,6 +638,7 @@ class Money(commands.Cog):
     @commands.command(name="remove-money", help="Remove money from target: remove-money <user: discord.Member> <value: integer>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def remove_money(self, ctx: Context, member: discord.Member, balance: int):
+        logging.debug(f"Removing {balance} from {member.display_name}")
         try:
             if member.id in members:
                 config["players"][member.id]["balance"] -= abs(int(balance))
@@ -658,6 +691,9 @@ class Money(commands.Cog):
                 if _user.id == _id:
                     member = _user.id
             balance = float(message[1])
+
+            logging.debug(f"Adding {balance} to {member.display_name}")
+
             if member in members:
                 config["players"][member]["balance"] += abs(int(balance))
                 embed = discord.Embed(
@@ -686,6 +722,7 @@ class Money(commands.Cog):
 
     @commands.command(name="buy", help="Spend money to make more money bruh: buy <type: string> <value: integer>")
     async def buy_upgrade(self, ctx: Context, type: str, value: int = 1):
+        logging.debug(f"{ctx.author.display_name} is buying {type} * {value}")
         try:
             if type in config["upgrade"].keys():
                 if "require" in config["upgrade"][type].keys():
@@ -811,7 +848,7 @@ class Money(commands.Cog):
                     embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
             else:
-                logging.info(f"{c.fail}Invalid type or value{c.end}")
+                logging.info(f"Invalid type or value")
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
                     description="❌ Invalid type or value"
@@ -824,6 +861,8 @@ class Money(commands.Cog):
 
     @commands.command(name="pay", help="Send money to target: pay <user: discord.Member> <value: int>")
     async def user_pay(self, ctx: Context, member: discord.Member, balance: int):
+        logging.debug(
+            f"Transfering {balance} from {ctx.author.display_name} to {member.display_name}")
         try:
             if balance < 1:
                 embed = discord.Embed(
@@ -872,6 +911,7 @@ class Money(commands.Cog):
 
     @commands.command(name="balance", help="Show your balance or more likely, empty pocket: b, bal, balance, money", aliases=["bal", "b", "money"])
     async def bal(self, ctx: Context):
+        logging.debug(f"Displaying balance of {ctx.author.display_name}")
         try:
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
@@ -889,14 +929,17 @@ class Income(commands.Cog):
     """Everything about income"""
 
     @commands.command(name="income-calc", help="Calculate income: income <populace>")
-    async def income_calc(self, ctx: Context, *message):
+    async def income_calc(self, ctx: Context, population: int = 0):
+        logging.debug(
+            f"{ctx.author.display_name} requested income calc of {population}")
         try:
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
-                description=f"Income: {int((int(message[0]) * 0.01 * 0.4 / 6)):,}{config['currency_symbol']}".replace(
+                description=f"Income: {int((int(population) * 0.01 * 0.4 / 6)):,}{config['currency_symbol']}".replace(
                     ",", " ")
             )
-            embed.set_author(name="Role", icon_url=bot.user.avatar_url)
+            embed.set_author(name="Income calculator",
+                             icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
         except:
             print(traceback.format_exc())
@@ -904,6 +947,7 @@ class Income(commands.Cog):
 
     @commands.command(name="income", help="Shows your income: income")
     async def income(self, ctx: Context):
+        logging.debug(f"Displaying income of {ctx.author.display_name}")
         try:
             income = 0
             for role in ctx.author.roles:
@@ -911,7 +955,7 @@ class Income(commands.Cog):
                     if config["income"][role.id] != 0:
                         income += config.config["income"][role.id]
                     else:
-                        logging.info(f"Excluding: {role.name}")
+                        logging.debug(f"Excluding: {role.name}")
                 except:
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
@@ -945,7 +989,8 @@ class Income(commands.Cog):
 
     @commands.command(name="add-income", pass_context=True, help="Add income: add-income <role: discord.Role> <value: integer>")
     @commands.has_permissions(administrator=True)
-    async def add_income(self, ctx: Context, role, value: int):
+    async def add_income(self, ctx: Context, role: discord.Role, value: int):
+        logging.debug(f"Adding {value} to income of {role}")
         try:
             if value > 0:
                 defrole = role
@@ -981,7 +1026,8 @@ class Income(commands.Cog):
 
     @commands.command(name="remove-income", pass_context=True, help="Remove income: remove-income <role: discord.Role> <value: integer>")
     @commands.has_permissions(administrator=True)
-    async def remove_income(self, ctx: Context, role, value: int):
+    async def remove_income(self, ctx: Context, role: discord.Role, value: int):
+        logging.debug(f"Removing {value} from income of {role}")
         try:
             if value > 0:
                 defrole = role
@@ -1017,6 +1063,7 @@ class Income(commands.Cog):
 
     @commands.command(name="income-lb", help="Show da income leaderboard: l, lb, leaderboard")
     async def income_lb(self, ctx: Context):
+        logging.debug("Displaying income leaderboard")
         try:
             roles = config["income"]
             _sorted = {k: v for k, v in sorted(
@@ -1097,6 +1144,7 @@ class Config(commands.Cog):
     @commands.command(name="config", help="Output config directory: config <path> [path]...", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def config_(self, ctx: Context, *message):
+        logging.debug(f"{ctx.author.display_name} requested config")
         try:
             message = list(message)
             for i in range(len(message)):
@@ -1186,6 +1234,8 @@ class Config(commands.Cog):
     @commands.command(name="set", help="Change values in config. You rather know what ya doin!: set <path> [path]... { = | < | > } <value>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def set(self, ctx: Context, *message):
+        logging.debug(
+            f"{ctx.author.display_name} is setting something in config: {message}")
         try:
             message = list(message)
             for i in range(len(message)):
@@ -1273,6 +1323,7 @@ class Config(commands.Cog):
     @commands.command(name="config-stats", help="Config stats: config-stats", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def config_stats(self, ctx: Context):
+        logging.debug("Displaying config stats")
         size = os.path.getsize(config.CONFIG)
         embed = discord.Embed(
             colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1284,6 +1335,7 @@ class Config(commands.Cog):
     @commands.command(name="next-backup", help="Outputs time of next backup: next-backup", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def next_backup(self, ctx: Context):
+        logging.debug("Sending next backup time")
         message = backup.next_iteration.astimezone(
             pytz.timezone('Europe/Prague')).strftime(r"%H:%M:%S, %d/%m/%Y")
         await ctx.send(message)
@@ -1294,6 +1346,7 @@ class Development(commands.Cog):
 
     @commands.command(name="json-encode", help="Encode string to yaml format: json-encode <value: string>", pass_context=True)
     async def yaml_encode(self, ctx: Context, *message):
+        logging.debug(f"Encoding: {' '.join(message)}")
         try:
             message = " ".join(message)
             await ctx.send(json.dumps(message))
@@ -1304,6 +1357,7 @@ class Development(commands.Cog):
     @commands.command(name="reload", help="Reload members and roles: reload")
     @commands.has_permissions(administrator=True)
     async def reload(self, ctx: Context):
+        logging.debug("Reloading config")
         try:
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1323,7 +1377,7 @@ class Development(commands.Cog):
 
                     for item in list(config.fallback["upgrade"].keys()):
                         logging.info(
-                            f"Added {c.okgreen}{item}{c.end} to {c.bold}{member.display_name}{c.end}")
+                            f"Added {item} to {member.display_name}")
                         config.config["players"][member.id]["upgrade"][item] = 0
                         config.config["players"][member.id]["maxupgrade"][item] = config["maxupgrade"][item]
             embed = discord.Embed(
@@ -1342,7 +1396,7 @@ class Development(commands.Cog):
 
             for role in bot.guilds[0].roles:
                 if not (role.id in roles):
-                    logging.info(f"{c.bold}{role}{c.end} added to config")
+                    logging.info(f"{role} added to config")
                     config.config["income"][role.id] = 0
 
             embed = discord.Embed(
@@ -1359,6 +1413,7 @@ class Development(commands.Cog):
     @commands.command(name="python3", help="Execute python code: python3 <command>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def python3(self, ctx: Context, *message):
+        logging.debug(f"Executing python command: {' '.join(message)}")
         try:
             message = list(message)
             for i in range(len(message)):
@@ -1404,6 +1459,7 @@ class Development(commands.Cog):
     @commands.command(name="execute", help="Execute python code: execute <command>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def config_save(self, ctx: Context, *message):
+        logging.debug(f"Executing command: {' '.join(message)}")
         try:
             message = list(message)
             result = exec(" ".join(message))
@@ -1416,6 +1472,7 @@ class Development(commands.Cog):
     @commands.command(name="dm", help="Send dm to member: dm <member: discord.Member> <content: str>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def send_dm(self, ctx: Context, member: discord.Member, *, content):
+        logging.debug(f"Sending {content} to {member.display_name}")
         if content == "join-dm":
             if config["join_dm"] != "":
                 content = config["join_dm"]
@@ -1426,6 +1483,7 @@ class Development(commands.Cog):
     @commands.command(name="asyncs-on-hold", help="Number of async events on hold: asyncs-on-hold", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def asyncs_on_hold_(self, ctx: Context):
+        logging.debug("Sending queued async commands")
         await ctx.send(asyncs_on_hold)
 
 
@@ -1435,6 +1493,7 @@ class Settings(commands.Cog):
     @commands.command(name="shutdown", help="Show the bot, whos da boss: shutdown", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def shutdown(self, ctx: Context):
+        logging.warning("Shutting down bot")
         embed = discord.Embed(
             colour=discord.Colour.from_rgb(255, 255, 0),
             description="✅ Shutting down..."
@@ -2032,9 +2091,9 @@ class Inventory(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}")
+    @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item UNION[str, discord.Member] [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}")
     @commands.has_permissions(administrator=True)
-    async def add_player_item(self, ctx: Context, user: discord.Member, *querry):
+    async def add_player_item(self, ctx: Context, user: Union[discord.Member, str], *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
         fparser.add_argument("rarity", choices=[
@@ -2054,16 +2113,28 @@ class Inventory(commands.Cog):
         except SystemExit:
             return
 
-        config["players"][user.id]["inventory"][fargs.name] = {
-            "description": fargs.description,
-            "type": fargs.type,
-            "rarity": fargs.rarity,
-            "income": fargs.income,
-            "income_percent": fargs.income_percent,
-            "discount": fargs.discount,
-            "discount_percent": fargs.discount_percent,
-            "equiped": False
-        }
+        if user == "loot-table":
+            config["loot-table"][fargs.name] = {
+                "description": fargs.description,
+                "type": fargs.type,
+                "rarity": fargs.rarity,
+                "income": fargs.income,
+                "income_percent": fargs.income_percent,
+                "discount": fargs.discount,
+                "discount_percent": fargs.discount_percent,
+                "equiped": False
+            }
+        else:
+            config["players"][user.id]["inventory"][fargs.name] = {
+                "description": fargs.description,
+                "type": fargs.type,
+                "rarity": fargs.rarity,
+                "income": fargs.income,
+                "income_percent": fargs.income_percent,
+                "discount": fargs.discount,
+                "discount_percent": fargs.discount_percent,
+                "equiped": False
+            }
 
         embed = discord.Embed(
             title=fargs.name, description=fargs.description, color=rarity.__dict__[fargs.rarity])
@@ -2107,7 +2178,7 @@ class Inventory(commands.Cog):
 
 class Player(commands.Cog):
     "Leveling up, upgrading stats"
-    @commands.command(name="skills", help="Show list of skills: skills", aliases=["stats"])
+    @commands.command(name="talents", help="Show list of skills: talents", aliases=["stats"])
     async def stats(self, ctx: Context):
         try:
             player = config["players"][ctx.author.id]["stats"]
@@ -2156,7 +2227,7 @@ class Player(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="skill-add", help="Spend skillpoints for skills: skill-add <skill> [value=1]")
+    @commands.command(name="levelup", help="Spend skillpoints for talents: levelup <skill> [value=1]")
     async def skill_add(self, ctx: Context, skill: str, value: int = 1):
         try:
             if skill.lower() in config["players"][ctx.author.id]["stats"]:
@@ -2207,10 +2278,10 @@ class Player(commands.Cog):
             await ctx.send(traceback.format_exc())
 
 
-class Missions(commands.Cog):
+class Expeditions(commands.Cog):
     "Mission based game mechanics"
 
-    @commands.command(name="add-mission", help="Add new mission: add-mission [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--loot-table LOOT_TABLE] [--xp XP] [--description DESCRIPTION] name cost hours")
+    @commands.command(name="add-expedition", help="Add new mission: add-expedition [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--common COMMON] [--uncommon UNCOMMON] [--rare RARE] [--epic EPIC] [--legendary LEGENDARY] [--xp XP] [--description DESCRIPTION] name cost hours")
     @commands.has_permissions(administrator=True)
     async def add_mission(self, ctx: Context, *querry):
         fparser = argparse.ArgumentParser()
@@ -2220,7 +2291,11 @@ class Missions(commands.Cog):
         fparser.add_argument("--manpower", type=int, default=0)
         fparser.add_argument("--level", type=int, default=0)
         fparser.add_argument("--chance", type=int, default=100)
-        fparser.add_argument("--loot-table", type=dict, default={})
+        fparser.add_argument("--common", type=float, default=1)
+        fparser.add_argument("--uncommon", type=float, default=0)
+        fparser.add_argument("--rare", type=float, default=0)
+        fparser.add_argument("--epic", type=float, default=0)
+        fparser.add_argument("--legendary", type=float, default=0)
         fparser.add_argument("--xp", type=int, default=0)
         fparser.add_argument("--description", default=None)
 
@@ -2238,9 +2313,15 @@ class Missions(commands.Cog):
                 "manpower": fargs.manpower,
                 "level": fargs.level,
                 "chance": fargs.chance,
-                "loot-table": fargs.loot_table,
                 "xp": fargs.xp,
-                "description": fargs.description
+                "description": fargs.description,
+                "loot-table": {
+                    "common": fargs.common,
+                    "uncommon": fargs.uncommon,
+                    "rare": fargs.rare,
+                    "epic": fargs.epic,
+                    "legendary": fargs.legendary,
+                }
             }
 
             embed = discord.Embed(title=fargs.name, description=fargs.description,
@@ -2266,18 +2347,25 @@ class Missions(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="remove-mission", help="Remove mission: remove-mission <mission: str>")
+    @commands.command(name="remove-expedition", help="Remove mission: remove-mission <mission: str>")
     @commands.has_permissions(administrator=True)
     async def remove_mission(self, ctx: Context, mission: str):
         try:
             try:
                 del config["missions"][mission]
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"✅ Expedition removed"
+                )
+                embed.set_author(name="Remove expedition",
+                                 icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
             except KeyError:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"❌ Mission not found"
+                    description=f"❌ Expedition not found"
                 )
-                embed.set_author(name="Remove mission",
+                embed.set_author(name="Remove expedition",
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
                 return
@@ -2285,7 +2373,7 @@ class Missions(commands.Cog):
             print(traceback.format_exc())
             ctx.send(traceback.format_exc())
 
-    @commands.command(name="missions", help="List of missions: missions")
+    @commands.command(name="expeditions", help="List of expeditions: expeditions")
     async def missions(self, ctx: Context):
         try:
             e_list = []
@@ -2310,9 +2398,10 @@ class Missions(commands.Cog):
             if e_list == []:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"❌ No missions yet"
+                    description=f"❌ No expeditions yet"
                 )
-                embed.set_author(name="Missions", icon_url=bot.user.avatar_url)
+                embed.set_author(name="Expeditions",
+                                 icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
                 return
 
@@ -2323,7 +2412,7 @@ class Missions(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="mission", help="Start a mission: mission", aliases=["mission-start"])
+    @commands.command(name="expedition", help="Start an expedition: expedition <name: str>", aliases=["mission-start"])
     async def mission_start(self, ctx: Context, mission_name: str):
         global time
         global asyncs_on_hold
@@ -2336,7 +2425,7 @@ class Missions(commands.Cog):
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"❌ Your level is too low"
             )
-            embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+            embed.set_author(name="Expedition", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
             return
 
@@ -2345,7 +2434,7 @@ class Missions(commands.Cog):
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"❌ Not enought money"
             )
-            embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+            embed.set_author(name="Expedition", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
             return
 
@@ -2354,7 +2443,7 @@ class Missions(commands.Cog):
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"❌ Not enought manpower"
             )
-            embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+            embed.set_author(name="Expedition", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
             return
 
@@ -2399,7 +2488,7 @@ class Missions(commands.Cog):
             description=f"<@{user.id}>´s mission from {_time}\n\n{msg}".replace(
                 ",", " ")
         )
-        embed.set_author(name="Mission", icon_url=bot.user.avatar_url)
+        embed.set_author(name="Expedition", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
 
         config["players"][user.id]["manpower"] += mission["manpower"]
@@ -2432,7 +2521,7 @@ class Battle(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="attack", help="Automatized battle system")
-    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, income: int = 0, income_role: discord.Role = None):
+    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, skip_colonization: str = "false", income: int = 0, income_role: discord.Role = None):
         global time
         global asyncs_on_hold
 
@@ -2445,6 +2534,38 @@ class Battle(commands.Cog):
         asyncs_on_hold.append(a_time)
         pstart, estart = player_manpower, enemy_manpower
         seconds = hours * 3600
+
+        if hours > config["maximum_attack_time"]:
+            logging.debug(f"Reached max attack time limit")
+            embed = discord.Embed(
+                colour=discord.Colour.from_rgb(255, 255, 0),
+                description=f"❌ Attack can be postponed for maximum of {config['maximum_attack_time']}h"
+            )
+            await ctx.send(embed=embed)
+            return
+
+        if skip_colonization == "false":
+            if config["players"][ctx.author.id]["balance"] < estart:
+                logging.debug(f"Not enought money for colonization")
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"❌ Not enought money for colonization"
+                )
+                await ctx.send(embed=embed)
+                return
+            else:
+                config["players"][ctx.author.id]["balance"] -= estart
+
+        if config["players"][ctx.author.id]["manpower"] >= pstart:
+            config["players"][ctx.author.id]["manpower"] -= pstart
+        else:
+            logging.debug(f"Not enought forces")
+            embed = discord.Embed(
+                colour=discord.Colour.from_rgb(255, 255, 0),
+                description=f"❌ Not enought manpower"
+            )
+            await ctx.send(embed=embed)
+            return
 
         embed = discord.Embed(
             title="Attack", description=f"<@{ctx.author.id}>", color=discord.Colour.from_rgb(255, 255, 0))
@@ -2461,7 +2582,7 @@ class Battle(commands.Cog):
         embed.add_field(name="Enemy support",
                         value=enemy_support, inline=False)
         embed.add_field(name="Role getting income",
-                        value=f"<&{income_role}>" if income_role != None else "None", inline=False)
+                        value=f"<@{income_role}>" if income_role != None else "None", inline=False)
         embed.add_field(name="Income", value=income, inline=False)
         await ctx.send(embed=embed)
 
@@ -2472,9 +2593,13 @@ class Battle(commands.Cog):
             player_support_roll = random.randint(0, player_support)
             enemy_manpower -= player_support_roll
 
+        enemy_manpower = max(enemy_manpower, 0)
+
         if enemy_support > 0:
             enemy_support_roll = random.randint(0, enemy_support)
             player_manpower -= enemy_support_roll
+
+        player_manpower = max(player_manpower, 0)
 
         iteration = 1
 
@@ -2500,18 +2625,27 @@ class Battle(commands.Cog):
 
         if iteration == 4 and player_manpower > 0 and enemy_manpower > 0:
             msg = "❌ Out of rolls"
+            if skip_colonization == "false":
+                config["players"][ctx.author.id]["balance"] += estart
         elif player_manpower > 0 and enemy_manpower == 0:
             msg = "✅ You won"
 
-            if income_role != None:
-                if income >= 200000:
-                    ctx.send("Income too high, ask admin to add it")
-                else:
-                    config["income"][income_role.id] += income
+            if config["allow_attack_income"]:
+                if income_role != None:
+                    if income >= 200000:
+                        ctx.send("Income too high, ask admin to add it")
+                    else:
+                        config["income"][income_role.id] += income
         elif player_manpower == 0 and enemy_manpower > 0:
             msg = "❌ You lost"
+            if skip_colonization == "false":
+                config["players"][ctx.author.id]["balance"] += estart
         else:
             msg = "❓ Tie ❓"
+            if skip_colonization == "false":
+                config["players"][ctx.author.id]["balance"] += estart
+
+        config["players"][ctx.author.id]["manpower"] += player_manpower
 
         embed = discord.Embed(
             colour=discord.Colour.from_rgb(255, 255, 0),
@@ -2534,7 +2668,7 @@ bot.add_cog(Settings())
 bot.add_cog(PlayerShop())
 bot.add_cog(Inventory())
 bot.add_cog(Player())
-bot.add_cog(Missions())
+bot.add_cog(Expeditions())
 bot.add_cog(Battle())
 
-bot.run(os.environ["TRINITY"])
+bot.run(args.token)
