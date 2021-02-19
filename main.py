@@ -207,7 +207,6 @@ roles = list(config["income"].keys())
 
 btime = config["backup_time"]
 asyncs_on_hold = []
-members = []
 
 
 @tasks.loop(seconds=btime)
@@ -692,7 +691,7 @@ class Money(commands.Cog):
                     member = _user.id
             balance = float(message[1])
 
-            logging.debug(f"Adding {balance} to {member.display_name}")
+            logging.debug(f"Adding {balance} to {member}")
 
             if member in members:
                 config["players"][member]["balance"] += abs(int(balance))
@@ -725,7 +724,7 @@ class Money(commands.Cog):
         logging.debug(f"{ctx.author.display_name} is buying {type} * {value}")
         try:
             if type in config["upgrade"].keys():
-                if "require" in config["upgrade"][type].keys():
+                if config["upgrade"][type]["require"] != None:
                     required = config["upgrade"][type]["require"]
                     player_own_required = True if config["players"][
                         ctx.author.id]["upgrade"][required] > 0 else False
@@ -792,12 +791,12 @@ class Money(commands.Cog):
                                 await ctx.send(embed=embed)
                                 config.save()
                             else:
-                                config.config["income"][role_list[0]
-                                                        ] += config["upgrade"][type]["income"] * int(value)
+                                if config["upgrade"][type]["income"] != 0:
+                                    config["income"][role_list[0]
+                                                     ] += config["upgrade"][type]["income"] * int(value)
 
-                                if config["players"][ctx.author.id]["maxupgrade"][type] != None:
-                                    config["players"][ctx.author.id]["upgrade"][type] += int(
-                                        value)
+                                config["players"][ctx.author.id]["upgrade"][type] += int(
+                                    value)
 
                                 config.config["players"][ctx.author.id]["balance"] -= config["upgrade"][type]["cost"] * int(
                                     value)
@@ -2340,6 +2339,16 @@ class Expeditions(commands.Cog):
                 fargs.chance) + "%", inline=True)
             embed.add_field(name="Xp", value=f"{fargs.xp:,}".replace(
                 ",", " "), inline=True)
+            embed.add_field(name="Common", value=str(
+                fargs.common*100) + "%", inline=False)
+            embed.add_field(name="Uncommon", value=str(
+                fargs.uncommon*100) + "%", inline=False)
+            embed.add_field(name="Rare", value=str(
+                fargs.rare*100) + "%", inline=False)
+            embed.add_field(name="Epic", value=str(
+                fargs.epic*100) + "%", inline=False)
+            embed.add_field(name="Legendary", value=str(
+                fargs.legendary*100) + "%", inline=False)
             await ctx.send(embed=embed)
 
             config.save()
@@ -2480,6 +2489,66 @@ class Expeditions(commands.Cog):
             msg = "✅ Successs"
             config["players"][user.id]["xp"] += mission["xp"]
             await levelup_check(ctx)
+
+            rarities = mission["loot-table"]
+            items = config["loot-table"]
+
+            weighted_list = ['common'] * int(rarities["common"]*100) + ['uncommon'] * int(rarities["uncommon"]*100) + \
+                ['rare'] * int(rarities["rare"]*100) + ['epic'] * \
+                int(rarities["epic"]*100) + \
+                ['legendary'] * int(rarities["legendary"]*100)
+
+            logging.debug(weighted_list)
+
+            selected_rarity = random.choice(weighted_list)
+
+            item_list = []
+
+            for item in items:
+                if items[item]["rarity"] == selected_rarity:
+                    item_list.append(item)
+
+            if item_list != []:
+                chosen_item = random.choice(item_list)
+            else:
+                chosen_item = None
+
+            if chosen_item == None:
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"No item found"
+                )
+                embed.set_author(name="Expedition",
+                                 icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+            else:
+                name = chosen_item
+                item = config["loot-table"][chosen_item]
+                embed = discord.Embed(
+                    title=name, description=item["description"] if item["description"] != None else "", color=rarity.__dict__[item["rarity"]])
+                embed.set_author(
+                    name="Item found", icon_url=bot.user.avatar_url)
+                embed.add_field(name="Type", value=item["type"], inline=True)
+                embed.add_field(
+                    name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
+                embed.add_field(
+                    name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
+                embed.add_field(
+                    name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
+                embed.add_field(
+                    name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
+                embed.add_field(
+                    name="Rarity", value=item["rarity"], inline=True)
+                await ctx.send(embed=embed)
+
+                index = 1
+                while name in config["players"][ctx.author.id]["inventory"]:
+                    name = name + f" ({index})"
+                    index += 1
+                    logging.debug(
+                        f"Item found in inventory! Trying suffix ({index})")
+                config["players"][ctx.author.id]["inventory"][name] = item
+
         else:
             msg = "❌ Failed"
 
