@@ -154,7 +154,7 @@ class Configuration():
             "work_range": 0,
             "join_dm": "",
             "default_balance": 0,
-            "level_multiplier": 1.2,
+            "level_multiplier": 1.1,
             "xp_for_level": 1000,
             "maximum_attack_time": 48,
             "allow_attack_income": True
@@ -1876,9 +1876,23 @@ class PlayerShop(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="player-sell", help="Sell items: player-sell <item: str> <price: int>")
-    async def player_sell(self, ctx: Context, item: str, price: int):
+    @commands.command(name="player-sell", help="Sell items: player-sell <price: int> <item: str>")
+    async def player_sell(self, ctx: Context, *, message):
         try:
+            querry = shlex.split(message)
+
+            try:
+                price = querry[0]
+                item = " ".join(querry[1:])
+
+            except IndexError:
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"❌ Bad arguments"
+                )
+                embed.set_author(name="Sell", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+
             if not item in config["players"][ctx.author.id]["inventory"]:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1904,7 +1918,7 @@ class PlayerShop(commands.Cog):
         config.save()
 
     @commands.command(name="player-buy", help="Sell items: player-buy <user: discord.Member> <item: str> <count: int>")
-    async def player_buy(self, ctx: Context, user: discord.Member, item: str):
+    async def player_buy(self, ctx: Context, user: discord.Member, *, item: str):
         try:
             cost = config["players"][user.id]["player_shop"][item]
             if config["players"][ctx.author.id]["balance"] >= cost - (cost * config['players'][ctx.author.id]['stats']['bartering']*0.025):
@@ -2028,7 +2042,7 @@ class Inventory(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="equip", help="Equip item")
-    async def equip(self, ctx: Context, item: str):
+    async def equip(self, ctx: Context, *, item: str):
         try:
             try:
                 types = []
@@ -2067,7 +2081,7 @@ class Inventory(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="unequip", help="Unequip item")
-    async def unequip(self, ctx: Context, item: str):
+    async def unequip(self, ctx: Context, *, item: str):
         try:
             try:
                 config["players"][ctx.author.id]["inventory"][item] = config["players"][ctx.author.id]["equiped"][item]
@@ -2091,7 +2105,7 @@ class Inventory(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item UNION[str, discord.Member] [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}")
-    @commands.has_permissions(administrator=True)
+    # @commands.has_permissions(administrator=True)
     async def add_player_item(self, ctx: Context, user: Union[discord.Member, str], *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
@@ -2152,7 +2166,7 @@ class Inventory(commands.Cog):
         config.save()
 
     @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
-    @commands.has_permissions(administrator=True)
+    # @commands.has_permissions(administrator=True)
     async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
         if item in config["players"][user.id]["inventory"]:
             del config["players"][user.id]["inventory"][item]
