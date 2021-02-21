@@ -2490,6 +2490,16 @@ class Expeditions(commands.Cog):
                 embed.add_field(name="Chance", value=str(
                     mission["chance"]) + "%", inline=True)
                 embed.add_field(name="Xp", value=mission["xp"], inline=True)
+                embed.add_field(name="Common", value=str(
+                    mission["loot-table"]["common"]*100) + "%", inline=False)
+                embed.add_field(name="Uncommon", value=str(
+                    mission["loot-table"]["uncommon"]*100) + "%", inline=False)
+                embed.add_field(name="Rare", value=str(
+                    mission["loot-table"]["rare"]*100) + "%", inline=False)
+                embed.add_field(name="Epic", value=str(
+                    mission["loot-table"]["epic"]*100) + "%", inline=False)
+                embed.add_field(name="Legendary", value=str(
+                    mission["loot-table"]["legendary"]*100) + "%", inline=False)
                 e_list.append(embed)
                 index += 1
 
