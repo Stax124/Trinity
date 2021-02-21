@@ -19,6 +19,7 @@ import pytz
 from discord import NotFound
 from discord.ext import commands, tasks
 from discord.ext.commands import CommandNotFound
+from discord.ext.commands.errors import MissingRequiredArgument
 from discord.ext.commands.context import Context
 from discord.member import Member
 from discord.utils import get
@@ -154,10 +155,11 @@ class Configuration():
             "work_range": 0,
             "join_dm": "",
             "default_balance": 0,
-            "level_multiplier": 1.1,
+            "level_multiplier": 1.2,
             "xp_for_level": 1000,
             "maximum_attack_time": 48,
-            "allow_attack_income": True
+            "allow_attack_income": True,
+            "max_player_items": 50
         }
 
     def save(self):
@@ -438,6 +440,9 @@ async def on_command_error(ctx, error):
     elif isinstance(error, NotFound):
         logging.debug("Error 404, passing")
         pass
+    elif isinstance(error, MissingRequiredArgument):
+        logging.info(error)
+        pass
     else:
         logging.debug("Error not catched, raising")
         raise error
@@ -506,7 +511,7 @@ class Money(commands.Cog):
             index = 1
             for name in _sorted:
                 try:
-                    username = get(bot.guilds[0].members, id=name).display_name
+                    username = get(bot.guilds[0].members, id=name).mention
                 except:
                     continue
                 msg += f"{index}. {username} `{_sorted[name]:,}{config['currency_symbol']}`\n".replace(
@@ -610,11 +615,11 @@ class Money(commands.Cog):
         logging.debug(f"Resetting balance of {member.display_name}")
         try:
             if member.id in members:
-                config["players"][member]["balance"] = 0
+                config["players"][member.id]["balance"] = 0
                 logging.info(f"Resetting {member}'s balance")
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"Resetting <@{member.id}>'s balance"
+                    description=f"Resetting {member.mention}'s balance"
                 )
                 embed.set_author(name="Reset money",
                                  icon_url=bot.user.avatar_url)
@@ -992,33 +997,25 @@ class Income(commands.Cog):
         logging.debug(f"Adding {value} to income of {role}")
         try:
             if value > 0:
-                defrole = role
-                if re.findall(re.compile(r"[<][@][&][0-9]+[>]"), role) != []:
-                    pattern = re.compile(r'[0-9]+')
-                    _users = bot.guilds[0].roles
-                    _id = int(re.findall(pattern, role)[0])
-                    for _user in _users:
-                        if _user.id == _id:
-                            logging.info(
-                                f"{role} was replaced by {_user.id}")
-                            role = _user.id
-
-                config.config["income"][role] += value
+                config.config["income"][role.id] += value
 
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"Added: `{value:,}{config['currency_symbol']}` to income of {defrole}".replace(
+                    description=f"Added: `{value:,}{config['currency_symbol']}` to income of {role.mention}".replace(
                         ",", " ")
                 )
-                embed.set_author(name="Income", icon_url=bot.user.avatar_url)
+                embed.set_author(name="Add income",
+                                 icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
             else:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"Invalid value"
+                    description=f"Add income"
                 )
                 embed.set_author(name="Income", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
+
+            config.save()
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -1029,22 +1026,11 @@ class Income(commands.Cog):
         logging.debug(f"Removing {value} from income of {role}")
         try:
             if value > 0:
-                defrole = role
-                if re.findall(re.compile(r"[<][@][&][0-9]+[>]"), role) != []:
-                    pattern = re.compile(r'[0-9]+')
-                    _users = bot.guilds[0].roles
-                    _id = int(re.findall(pattern, role)[0])
-                    for _user in _users:
-                        if _user.id == _id:
-                            logging.info(
-                                f"{role} was replaced by {_user.id}")
-                            role = _user.id
-
-                config.config["income"][role] -= value
+                config.config["income"][role.id] -= value
 
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"Removed: `{value:,}{config['currency_symbol']}` from income of {defrole}".replace(
+                    description=f"Removed: `{value:,}{config['currency_symbol']}` from income of {role.mention}".replace(
                         ",", " ")
                 )
                 embed.set_author(name="Income", icon_url=bot.user.avatar_url)
@@ -1073,7 +1059,7 @@ class Income(commands.Cog):
             index = 1
             for _id in _sorted:
                 try:
-                    role = get(bot.guilds[0].roles, id=_id).name
+                    role = get(bot.guilds[0].roles, id=_id).mention
                 except:
                     pass
                 msg += f"{index}. {role} `{_sorted[_id]:,}{config['currency_symbol']}`\n".replace(
@@ -1601,7 +1587,7 @@ class Settings(commands.Cog):
 
     @commands.command(name="deltatime", help="Sets time between allowed !work commands: deltatime <value: integer>", pass_context=True)
     @commands.has_permissions(administrator=True)
-    async def deltatime(self, ctx: Context, value: int):
+    async def deltatime(self, ctx: Context, value: int = config["deltatime"]):
         try:
             config["deltatime"] = int(value)
             config.save()
@@ -1649,7 +1635,7 @@ class Essentials(commands.Cog):
             msg = ""
             index = 1
             for user in bot.guilds[0].members:
-                msg += f"{index}. {user.display_name} `{user.id}`\n"
+                msg += f"{index}. {user.mention} `{user.id}`\n"
                 if index == 30:
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1684,7 +1670,7 @@ class Essentials(commands.Cog):
             msg = ""
             index = 1
             for role in bot.guilds[0].roles:
-                msg += f"{index}. {role.name}\n"
+                msg += f"{index}. {role.mention}\n"
                 if index == 30:
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1772,7 +1758,7 @@ class Essentials(commands.Cog):
             msg = ""
             index = 1
             for name in ctx.author.roles:
-                msg += f"{name} `{name.id}`\n"
+                msg += f"{name.mention} `{name.id}`\n"
                 index += 1
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1785,7 +1771,7 @@ class Essentials(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="shop", help="Show shop")
-    async def shop(self, ctx: Context, *message):
+    async def shop(self, ctx: Context):
         try:
             e_list = []
             index = 1
@@ -1869,6 +1855,11 @@ class PlayerShop(commands.Cog):
                 e_list.append(embed)
                 index += 1
 
+            if e_list == []:
+                embed = discord.Embed(title="Empty")
+                embed.set_author(
+                    name="Player shop" + f" ({index}/{last})", icon_url=bot.user.avatar_url)
+                e_list.append(embed)
             paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
             paginator.remove_reactions = True
             await paginator.run(e_list)
@@ -1882,7 +1873,7 @@ class PlayerShop(commands.Cog):
             querry = shlex.split(message)
 
             try:
-                price = querry[0]
+                price = int(querry[0])
                 item = " ".join(querry[1:])
 
             except IndexError:
@@ -1917,10 +1908,31 @@ class PlayerShop(commands.Cog):
 
         config.save()
 
-    @commands.command(name="player-buy", help="Sell items: player-buy <user: discord.Member> <item: str> <count: int>")
+    @commands.command(name="player-buy", help="Sell items: player-buy <user: discord.Member> <item: str>")
     async def player_buy(self, ctx: Context, user: discord.Member, *, item: str):
         try:
-            cost = config["players"][user.id]["player_shop"][item]
+            if ctx.author == user:
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description="❌ Can't buy item from yourself"
+                )
+                embed.set_author(name="Player buy",
+                                 icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
+            try:
+                cost = config["players"][user.id]["player_shop"][item]
+            except KeyError:
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description="❌ Item not found"
+                )
+                embed.set_author(name="Player buy",
+                                 icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
             if config["players"][ctx.author.id]["balance"] >= cost - (cost * config['players'][ctx.author.id]['stats']['bartering']*0.025):
                 config["players"][ctx.author.id]["inventory"][item] = config["players"][user.id]["inventory"][item]
                 config["players"][ctx.author.id]["balance"] -= cost - \
@@ -1950,6 +1962,34 @@ class PlayerShop(commands.Cog):
             await ctx.send(traceback.format_exc())
 
         config.save()
+
+    @commands.command(name="player-retrieve", help="Cancel shop listing of item: player-retrieve  <item: str>")
+    async def player_retrieve(self, ctx: Context, *, item: str):
+        try:
+            try:
+                config["players"][ctx.author.id]["player_shop"][item]
+            except KeyError:
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description="❌ Item not found"
+                )
+                embed.set_author(name="Player retrieve",
+                                 icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                return
+
+            del config["players"][ctx.author.id]["player_shop"][item]
+            embed = discord.Embed(
+                colour=discord.Colour.from_rgb(255, 255, 0),
+                description="✅ Item removed from shop"
+            )
+            embed.set_author(name="Player retrieve",
+                             icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
 
 
 class Inventory(commands.Cog):
@@ -2041,7 +2081,7 @@ class Inventory(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="equip", help="Equip item")
+    @commands.command(name="equip", help="Equip item: equip <*item: str>")
     async def equip(self, ctx: Context, *, item: str):
         try:
             try:
@@ -2080,7 +2120,7 @@ class Inventory(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="unequip", help="Unequip item")
+    @commands.command(name="unequip", help="Unequip item: unequip <*item: str>")
     async def unequip(self, ctx: Context, *, item: str):
         try:
             try:
@@ -2096,7 +2136,7 @@ class Inventory(commands.Cog):
             except KeyError:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"{item} not found in your inventory"
+                    description=f"❌ {item} not found in your inventory"
                 )
                 embed.set_author(name="Unequip", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
@@ -2104,8 +2144,34 @@ class Inventory(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
+    @commands.command(name="recycle", help="Recycle item: recycle <*item: str>")
+    async def recycle(self, ctx: Context, *, item: str):
+        try:
+            if item in config["players"][ctx.author.id]["inventory"]:
+                del config["players"][ctx.author.id]["inventory"][item]
+
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"✅ Recycled"
+                )
+                embed.set_author(
+                    name="Recycle", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+                config.save()
+            else:
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"❌ {item} not found"
+                )
+                embed.set_author(
+                    name="Recycle", icon_url=bot.user.avatar_url)
+                await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
     @commands.command(name="add-player-item", help="Add new item to players inventory: add-player-item UNION[str, discord.Member] [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}")
-    # @commands.has_permissions(administrator=True)
+    @commands.has_permissions(administrator=True)
     async def add_player_item(self, ctx: Context, user: Union[discord.Member, str], *querry):
         fparser = argparse.ArgumentParser()
         fparser.add_argument("name", type=str)
@@ -2166,9 +2232,18 @@ class Inventory(commands.Cog):
         config.save()
 
     @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
-    # @commands.has_permissions(administrator=True)
-    async def remove_player_item(self, ctx: Context, user: discord.Member, item: str):
-        if item in config["players"][user.id]["inventory"]:
+    @commands.has_permissions(administrator=True)
+    async def remove_player_item(self, ctx: Context, user: Union[str, discord.Member], *, item: str):
+        if user == "loot-table":
+            del config["loot-table"][item]
+            embed = discord.Embed(
+                colour=discord.Colour.from_rgb(255, 255, 0),
+                description=f"✅ Removed {item} from loot-table"
+            )
+            embed.set_author(name="Remove player item",
+                             icon_url=bot.user.avatar_url)
+            await ctx.send(embed=embed)
+        elif item in config["players"][user.id]["inventory"]:
             del config["players"][user.id]["inventory"][item]
 
             embed = discord.Embed(
@@ -2294,7 +2369,7 @@ class Player(commands.Cog):
 class Expeditions(commands.Cog):
     "Mission based game mechanics"
 
-    @commands.command(name="add-expedition", help="Add new mission: add-expedition [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--common COMMON] [--uncommon UNCOMMON] [--rare RARE] [--epic EPIC] [--legendary LEGENDARY] [--xp XP] [--description DESCRIPTION] name cost hours")
+    @commands.command(name="add-expedition", help="Add new expedition: add-expedition [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--common COMMON] [--uncommon UNCOMMON] [--rare RARE] [--epic EPIC] [--legendary LEGENDARY] [--xp XP] [--description DESCRIPTION] name cost hours")
     @commands.has_permissions(administrator=True)
     async def add_mission(self, ctx: Context, *querry):
         fparser = argparse.ArgumentParser()
@@ -2370,7 +2445,7 @@ class Expeditions(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="remove-expedition", help="Remove mission: remove-mission <mission: str>")
+    @commands.command(name="remove-expedition", help="Remove expedition: remove-mission <mission: str>")
     @commands.has_permissions(administrator=True)
     async def remove_mission(self, ctx: Context, mission: str):
         try:
@@ -2504,64 +2579,75 @@ class Expeditions(commands.Cog):
             config["players"][user.id]["xp"] += mission["xp"]
             await levelup_check(ctx)
 
-            rarities = mission["loot-table"]
-            items = config["loot-table"]
+            if len(config["players"][ctx.author.id]["inventory"]) >= config["max_player_items"]:
 
-            weighted_list = ['common'] * int(rarities["common"]*100) + ['uncommon'] * int(rarities["uncommon"]*100) + \
-                ['rare'] * int(rarities["rare"]*100) + ['epic'] * \
-                int(rarities["epic"]*100) + \
-                ['legendary'] * int(rarities["legendary"]*100)
+                rarities = mission["loot-table"]
+                items = config["loot-table"]
 
-            logging.debug(weighted_list)
+                weighted_list = ['common'] * int(rarities["common"]*100) + ['uncommon'] * int(rarities["uncommon"]*100) + \
+                    ['rare'] * int(rarities["rare"]*100) + ['epic'] * \
+                    int(rarities["epic"]*100) + \
+                    ['legendary'] * int(rarities["legendary"]*100)
 
-            selected_rarity = random.choice(weighted_list)
+                logging.debug(weighted_list)
 
-            item_list = []
+                selected_rarity = random.choice(weighted_list)
 
-            for item in items:
-                if items[item]["rarity"] == selected_rarity:
-                    item_list.append(item)
+                item_list = []
 
-            if item_list != []:
-                chosen_item = random.choice(item_list)
+                for item in items:
+                    if items[item]["rarity"] == selected_rarity:
+                        item_list.append(item)
+
+                if item_list != []:
+                    chosen_item = random.choice(item_list)
+                else:
+                    chosen_item = None
+
+                if chosen_item == None:
+                    embed = discord.Embed(
+                        colour=discord.Colour.from_rgb(255, 255, 0),
+                        description=f"No item found"
+                    )
+                    embed.set_author(name="Expedition",
+                                     icon_url=bot.user.avatar_url)
+                    await ctx.send(embed=embed)
+                else:
+                    name = chosen_item
+                    item = config["loot-table"][chosen_item]
+                    embed = discord.Embed(
+                        title=name, description=item["description"] if item["description"] != None else "", color=rarity.__dict__[item["rarity"]])
+                    embed.set_author(
+                        name="Item found", icon_url=bot.user.avatar_url)
+                    embed.add_field(
+                        name="Type", value=item["type"], inline=True)
+                    embed.add_field(
+                        name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
+                    embed.add_field(
+                        name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
+                    embed.add_field(
+                        name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
+                    embed.add_field(
+                        name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
+                    embed.add_field(
+                        name="Rarity", value=item["rarity"], inline=True)
+                    await ctx.send(embed=embed)
+
+                    index = 1
+                    while name in config["players"][ctx.author.id]["inventory"]:
+                        name = name + f" ({index})"
+                        index += 1
+                        logging.debug(
+                            f"Item found in inventory! Trying suffix ({index})")
+                    config["players"][ctx.author.id]["inventory"][name] = item
             else:
-                chosen_item = None
-
-            if chosen_item == None:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"No item found"
+                    description=f"Maximum item limit reached"
                 )
                 embed.set_author(name="Expedition",
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
-            else:
-                name = chosen_item
-                item = config["loot-table"][chosen_item]
-                embed = discord.Embed(
-                    title=name, description=item["description"] if item["description"] != None else "", color=rarity.__dict__[item["rarity"]])
-                embed.set_author(
-                    name="Item found", icon_url=bot.user.avatar_url)
-                embed.add_field(name="Type", value=item["type"], inline=True)
-                embed.add_field(
-                    name="Income", value=item["income"], inline=True) if item["income"] != 0 else None
-                embed.add_field(
-                    name="Income %", value=item["income_percent"], inline=True) if item["income_percent"] != 0 else None
-                embed.add_field(
-                    name="Discount", value=item["discount"], inline=True) if item["discount"] != 0 else None
-                embed.add_field(
-                    name="Discount %", value=item["discount_percent"], inline=True) if item["discount_percent"] != 0 else None
-                embed.add_field(
-                    name="Rarity", value=item["rarity"], inline=True)
-                await ctx.send(embed=embed)
-
-                index = 1
-                while name in config["players"][ctx.author.id]["inventory"]:
-                    name = name + f" ({index})"
-                    index += 1
-                    logging.debug(
-                        f"Item found in inventory! Trying suffix ({index})")
-                config["players"][ctx.author.id]["inventory"][name] = item
 
         else:
             msg = "❌ Failed"
@@ -2665,7 +2751,7 @@ class Battle(commands.Cog):
         embed.add_field(name="Enemy support",
                         value=enemy_support, inline=False)
         embed.add_field(name="Role getting income",
-                        value=f"<@{income_role}>" if income_role != None else "None", inline=False)
+                        value=f"@{income_role}" if income_role != None else "None", inline=False)
         embed.add_field(name="Income", value=income, inline=False)
         await ctx.send(embed=embed)
 
