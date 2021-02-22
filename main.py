@@ -2589,7 +2589,7 @@ class Expeditions(commands.Cog):
             config["players"][user.id]["xp"] += mission["xp"]
             await levelup_check(ctx)
 
-            if len(config["players"][ctx.author.id]["inventory"]) >= config["max_player_items"]:
+            if len(config["players"][ctx.author.id]["inventory"]) < config["max_player_items"]:
 
                 rarities = mission["loot-table"]
                 items = config["loot-table"]
