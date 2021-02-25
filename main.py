@@ -2238,7 +2238,7 @@ class Inventory(commands.Cog):
 
         config.save()
 
-    @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
+    @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: Union[str, discord.Member]> <item: str>")
     @commands.has_permissions(administrator=True)
     async def remove_player_item(self, ctx: Context, user: Union[str, discord.Member], *, item: str):
         if user == "loot-table":
@@ -2602,7 +2602,6 @@ class Expeditions(commands.Cog):
             config["players"][user.id]["xp"] += mission["xp"] + mission["xp"] * \
                 config["players"][ctx.author.id]["stats"]["learning"] * \
                 config["learning_rate"]
-            await levelup_check(ctx)
 
             if len(config["players"][ctx.author.id]["inventory"]) < config["max_player_items"]:
 
@@ -2714,7 +2713,7 @@ class Battle(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="attack", help="Automatized battle system")
+    @commands.command(name="attack", help="Automatized battle system: attack <player_manpower: int> ")
     async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, skip_colonization: str = "false", income: int = 0, income_role: discord.Role = None):
         global time
         global asyncs_on_hold

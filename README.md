@@ -1,8 +1,31 @@
 # Trinity
 
+<!-- vscode-markdown-toc -->
+* 1. [Installation](#Installation)
+  * 1.1. [Usage](#Usage)
+* 2. [Discord commands](#Discordcommands)
+  * 2.1. [Battle](#Battle)
+  * 2.2. [Config](#Config)
+  * 2.3. [Development](#Development)
+  * 2.4. [Essentials](#Essentials)
+  * 2.5. [Income](#Income)
+  * 2.6. [Money](#Money)
+  * 2.7. [PlayerShop](#PlayerShop)
+  * 2.8. [Inventory](#Inventory)
+  * 2.9. [Expeditions](#Expeditions)
+  * 2.10. [Player](#Player)
+  * 2.11. [Settings](#Settings)
+* 3. [License](#License)
+
+<!-- vscode-markdown-toc-config
+	numbering=true
+	autoSave=true
+	/vscode-markdown-toc-config -->
+<!-- /vscode-markdown-toc -->
+
 Powerfull discord bot for handeling economy for discord servers
 
-## Installation
+## 1. <a name='Installation'></a>Installation
 
 **Clone repo:**
 `git clone https://github.com/Stax124/Trinity`
@@ -36,48 +59,11 @@ sudo python3 main.py
 
 Application should create configuration file called `.economy` in your home directory (`~/.economy`), if running as root, its changed to `/root/.economy`
 
-## Usage in AWS cloud
+### 1.1. <a name='Usage'></a>Usage
 
-Tested on Ubuntu 20.04 LTS
-Repeat all installation commands except start command and install **pm2**
+Default prefix: **-**
 
-```sh
-curl -sL https://deb.nodesource.com/setup_15.x | sudo -E bash -
-sudo apt-get install -y nodejs
-npm install pm2@latest -g
-```
-
-**Start `main.py` with pm2 as background process:**
-
-```sh
-pm2 start main.py -l ./log --interpreter=python3
-```
-
-**Optional: Create restart script:**
-
-```sh
-touch restart.sh
-nano restart.sh
-```
-
-**Copypaste this script:**
-
-```sh
-#! /bin/sh
-pm2 kill
-pm2 start main.py -l ./log --interpreter=python3
-```
-
-Control+S to save and Control+X to exit
-
-### Usage
-
-**Create role named Admin (with capital A)**
-Without it, you cannot modify settings
-
-All commans below will be with default prefix, modify them with yours
-
-**Save, load configuration or reload bot:**
+**Save, load configuration or reload configuration:**
 
 ```py
 -config-save
@@ -94,52 +80,53 @@ Discord: `-set currency_symbol = $`
 Config: `"currency_symbol": "$"`
 
 **Set default time between -work (in seconds):**
-Discord: `-set deltatime = $`
+Discord: `-set deltatime = 10800`
 Config: `"deltatime": 10800`
 
-## Discord commands
+## 2. <a name='Discordcommands'></a>Discord commands
 
-### Battle
+### 2.1. <a name='Battle'></a>Battle
 
 ```plain
-attack                 Automatized battle system: attack <player_manpower> <enemy_manpower> <hours> [player_support=0] [enemy_support=0] [income=0] [income_role]
+attack                 Automatized battle system: attack <player_manpower: int> <enemy_manpower: int> <hours: int> [player_support=0] [enemy_support=0] [skip_colonization=false] [income=0] [income_role]
 manpower               Show manpower of user: [manpower|mp|power] [user]
 ```
 
-### Config
+### 2.2. <a name='Config'></a>Config
 
 ```plain
 next-backup             Outputs time of next backup: next-backup
-config                  Output config directory: config <path> [path]...
+config                  Output config directory: config <path: str> [path]...
 config-load             Load configuration file: config-load
 config-save             Save configuration file: config-save
 config-stats            Config stats: config-stats
-set                     Change values in config. You rather know what ya doin!: set <path> [path]... { = | < | > } <value>
+set                     Change values in config. You rather know what ya doin!: set <path: str> [path]... { = | < | > } <value>
 ```
 
-### Development
+### 2.3. <a name='Development'></a>Development
 
 ```plain
 asyncs-on-hold          Async events currently on hold: asyncs-on-hold
 dm                      Send dm to member: dm <member: discord.Member> <content: str>
-execute                 Execute python code: execute <command>
-json-encode             Encode string to yaml format: json-encode <value: string>
-python3                 Execute python code: python3 <command>
+execute                 Execute python code: execute <command: str> [command]...
+json-encode             Encode string to yaml format: json-encode <value: str>
+python3                 Execute python code: python3 <command: str> [command]...
 reload                  Reload members and roles: reload
+dm                      Send dm to member: dm <member: discord.Member> <content: str>
 ```
 
-### Essentials
+### 2.4. <a name='Essentials'></a>Essentials
 
 ```plain
 members                 Show all members: members
 role                    Your roles: role
 roles                   Show all roles: roles
-roll                    Roll the dice of x sides: roll <maximal-value: integer>
+roll                    Roll the dice of x sides: roll <maximal-value: int>
 shop                    Show shop: shop
 time                    Shows formated time: time
 ```
 
-### Income
+### 2.5. <a name='Income'></a>Income
 
 ```plain
 add-income              Add income: add-income <role: discord.Role> <value: integer>
@@ -149,69 +136,71 @@ income-lb               Show da income leaderboard: l, lb, leaderboard
 remove-income           Remove income: remove-income <role: discord.Role> <value: integer>
 ```
 
-### Money
+### 2.6. <a name='Money'></a>Money
 
 ```plain
-add-money               Add money to target: add-money <user: discord.Member> <value: integer>
+add-money               Add money to target: add-money <user: discord.Member> <value: int>
 balance                 Show your balance or more likely, empty pocket: b, bal, balance, money
-buy                     Spend money to make more money bruh: buy <type: string> <value: integer>
-leaderboard             Show da leaderboard: l, lb, leaderboard
+buy                     Spend money to make more money bruh: buy <type: str> <value: int = 1>
+leaderboard             Show the leaderboard: l, lb, leaderboard
 pay                     Send money to target: pay <user: discord.Member> <value: int>
-remove-money            Remove money from target: remove-money <user: discord.Member> <value: integer>
+remove-money            Remove money from target: remove-money <user: discord.Member> <value: int>
 reset-money             Reset balance of target: reset-money <user: discord.Member>
 work                    What are you doing, make some money!: work
 ```
 
-### PlayerShop
+### 2.7. <a name='PlayerShop'></a>PlayerShop
 
 ```plain
-player-buy              Sell items: player-buy <user: discord.Member> <item: str> <count: int>
-player-sell             Sell items: player-sell <item: str> <price: int>
+player-buy              Sell items: player-buy <user: discord.Member> <*item: str>
+player-sell             Sell items: player-sell <price: int> <*item: str>
 player-shop             Show player shop: player-shop <player: discord.Member>
+player-retrieve         Cancel shop listing of item: player-retrieve  <item: str>
 ```
 
-### Inventory
+### 2.8. <a name='Inventory'></a>Inventory
 
 ```plain
-add-player-item         Add new item to players inventory: add-player-item [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name rarity
+add-player-item         Add new item to players inventory: add-player-item UNION[str, discord.Member] [--income INCOME] [--income_percent INCOME_PERCENT] [--discount DISCOUNT] [--discount_percent DISCOUNT_PERCENT] [--description DESCRIPTION] name {common,uncommon,rare,epic,legendary,event} {helmet,weapon,armor,leggins,boots,artefact}
 inventory               Shows your 'realy usefull' items in your inventory: inventory
-remove-player-item      Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>
-equip                   Equip an item: equip <item>
+remove-player-item      Remove item from players inventory: remove-player-item <user: Union[str, discord.Member]> <item: str>
+equip                   Equip an item: equip <*item: str>
 equiped                 Shows your equiped items: equiped
-unequip                 Unequip item: unequip <item>
+unequip                 Unequip item: unequip <*item: str>
+recycle                 Recycle item: recycle <*item: str>
 ```
 
-### Missions
+### 2.9. <a name='Expeditions'></a>Expeditions
 
 ```plain
-add-mission             Add new mission: add-mission [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--loot-table LOOT_TABLE] [--xp XP] name cost
-mission                 Start a mission: mission
-missions                List of missions: missions
-remove-mission          Remove mission: remove-mission <mission: str>
+add-expedition          Add new expedition: add-expedition [-h] [--manpower MANPOWER] [--level LEVEL] [--chance CHANCE] [--common COMMON] [--uncommon UNCOMMON] [--rare RARE] [--epic EPIC] [--legendary LEGENDARY] [--xp XP] [--description DESCRIPTION] name cost hours
+expedition              Start an expedition: expedition <name: str>
+expeditions             List of expeditions: expeditions
+remove-expedition       Remove expedition: remove-expedition <name: str>
 ```
 
-### Player
+### 2.10. <a name='Player'></a>Player
 
 ```plain
 level                   Show level, Xp and progress to another level: level
-skill-add               Spend skillpoints for skills: skill-add
-skills                  Show list of skills: [skills|stats]
+levelup                 Spend skillpoints for talents: levelup <skill: str> [value=1]
+talents                 Show list of skills: talents
 skillpoints             Number of your skillpoints: skillpoints
 ```
 
-### Settings
+### 2.11. <a name='Settings'></a>Settings
 
 ```plain
-add-item                Add item to database: add-item <name: string> <cost: integer> <max: integer> [income: integer]
-bravo-six-going-dark    Deletes messages: bravo-six-going-dark <messages: integer>
+add-item                Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] [--require REQUIRE] name cost
+bravo-six-going-dark    Deletes messages: bravo-six-going-dark <messages: int>
 deltatime               Sets time between allowed !work commands: deltatime <value: int>
 on-join-dm              Set message to be send when player joins: on-join-dm <message: str>
-prefix                  Change prefix of da bot: prefix <prefix: string>
-remove-item             Remove item from database: remove-item <name: string>
+prefix                  Change prefix of da bot: prefix <prefix: str>
+remove-item             Remove item from database: remove-item <name: str>
 shutdown                Show the bot, whos da boss: shutdown
 ```
 
-## License
+## 3. <a name='License'></a>License
 
 ```plain
                     GNU GENERAL PUBLIC LICENSE
