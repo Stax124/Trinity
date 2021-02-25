@@ -2600,7 +2600,7 @@ class Expeditions(commands.Cog):
         if random.randint(0, 100) < mission["chance"]:
             msg = "✅ Successs"
             config["players"][user.id]["xp"] += mission["xp"] + mission["xp"] * \
-                config["players"][ctx.author.id]["skills"]["learning"] * \
+                config["players"][ctx.author.id]["stats"]["learning"] * \
                 config["learning_rate"]
             await levelup_check(ctx)
 
@@ -2857,16 +2857,17 @@ class Battle(commands.Cog):
         config.save()
 
 
-bot.add_cog(Money())
-bot.add_cog(Income())
-bot.add_cog(Essentials())
-bot.add_cog(Config())
-bot.add_cog(Development())
-bot.add_cog(Settings())
-bot.add_cog(PlayerShop())
-bot.add_cog(Inventory())
-bot.add_cog(Player())
-bot.add_cog(Expeditions())
-bot.add_cog(Battle())
+if __name__ == "__main__":
+    bot.add_cog(Money())
+    bot.add_cog(Income())
+    bot.add_cog(Essentials())
+    bot.add_cog(Config())
+    bot.add_cog(Development())
+    bot.add_cog(Settings())
+    bot.add_cog(PlayerShop())
+    bot.add_cog(Inventory())
+    bot.add_cog(Player())
+    bot.add_cog(Expeditions())
+    bot.add_cog(Battle())
 
-bot.run(args.token)
+    bot.run(args.token)
