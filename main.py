@@ -159,7 +159,15 @@ class Configuration():
             "xp_for_level": 1000,
             "maximum_attack_time": 48,
             "allow_attack_income": True,
-            "max_player_items": 50
+            "max_player_items": 30,
+            "block_asyncs": False,
+            "diplomacy_rate": 0.025,
+            "warlord_rate": 0.025,
+            "intrique_rate": 0.025,
+            "stewardship_rate": 0.025,
+            "trading_rate": 0.025,
+            "bartering_rate": 0.025,
+            "learning_rate": 0.25,
         }
 
     def save(self):
@@ -561,18 +569,18 @@ class Money(commands.Cog):
                     await ctx.send(embed=embed)
                 else:
                     income_multiplier = 1
-                    for item in config["players"][ctx.author.id]["inventory"]:
-                        item = config["players"][ctx.author.id]["inventory"][item]
+                    for item in config["players"][ctx.author.id]["equiped"]:
+                        item = config["players"][ctx.author.id]["equiped"][item]
                         income_multiplier = income_multiplier * \
                             (item["income_percent"] / 100)
 
                     income_boost = 0
-                    for item in config["players"][ctx.author.id]["inventory"]:
-                        item = config["players"][ctx.author.id]["inventory"][item]
+                    for item in config["players"][ctx.author.id]["equiped"]:
+                        item = config["players"][ctx.author.id]["equiped"][item]
                         income_boost += item["income"]
 
                     income = (income*income_multiplier)+income_boost+(
-                        round(config['players'][ctx.author.id]['stats']['stewardship']*income*0.025, 5))
+                        round(config['players'][ctx.author.id]['stats']['stewardship']*income*config['stewardship_rate'], 5))
 
                     rate = random.randrange(
                         100-config["work_range"]*100, 100+config["work_range"]*100) / 100 if config["work_range"] != 0 else 1
@@ -591,12 +599,12 @@ class Money(commands.Cog):
                         f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}]")
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
-                        description=f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus: `{config['players'][ctx.author.id]['stats']['stewardship']*2.5}%`".replace(",", " ")
+                        description=f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus: `{config['players'][ctx.author.id]['stats']['stewardship']*config['stewardship_rate']*100}%`".replace(",", " ")
                     )
                     embed.set_author(name="Work", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
                     logging.debug(
-                        f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}], symbol={config['currency_symbol']}, next={datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}, boost={income_boost}, multiplier={income_multiplier}, stewardship={config['players'][ctx.author.id]['stats']['stewardship']*2.5}%")
+                        f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}], symbol={config['currency_symbol']}, next={datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}, boost={income_boost}, multiplier={income_multiplier}, stewardship={config['players'][ctx.author.id]['stats']['stewardship']*config['stewardship_rate']*100}%")
             else:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
@@ -754,7 +762,7 @@ class Money(commands.Cog):
                             discount = 100
 
                         discount = round(
-                            (discount * 0.01) + (config['players'][ctx.author.id]['stats']['bartering']*0.025), 5)
+                            (discount * 0.01) + (config['players'][ctx.author.id]['stats']['bartering']*config['bartering_rate']), 5)
 
                         cost = (config["upgrade"][type]["cost"] -
                                 config["upgrade"][type]["cost"] * discount) * int(value)
@@ -803,15 +811,14 @@ class Money(commands.Cog):
                                 config["players"][ctx.author.id]["upgrade"][type] += int(
                                     value)
 
-                                config.config["players"][ctx.author.id]["balance"] -= config["upgrade"][type]["cost"] * int(
-                                    value)
+                                config["players"][ctx.author.id]["balance"] -= cost
                                 config.config["players"][ctx.author.id]["manpower"] += int(value) * (
                                     config["upgrade"][type]["manpower"] if "manpower" in config["upgrade"][type] else 0)
                                 if config["upgrade"][type]["income"] != 0:
                                     embed = discord.Embed(
                                         colour=discord.Colour.from_rgb(
                                             255, 255, 0),
-                                        description=f"✅ Bought {value}x {type} for {cost:,}{config['currency_symbol']} and your income is now {config.config['income'][role_list[0]]:,}{config['currency_symbol']}\nDiscount: `{discount*100}%`\nBartering discount included in discount: `{config['players'][ctx.author.id]['stats']['bartering']*2.5}%`".replace(
+                                        description=f"✅ Bought {value}x {type} for {cost:,}{config['currency_symbol']} and your income is now {config.config['income'][role_list[0]]:,}{config['currency_symbol']}\nDiscount: `{discount*100}%`\nBartering discount included in discount: `{config['players'][ctx.author.id]['stats']['bartering']*config['bartering_rate']*100}%`".replace(
                                             ",", " ")
                                     )
                                     embed.set_author(
@@ -821,7 +828,7 @@ class Money(commands.Cog):
                                     embed = discord.Embed(
                                         colour=discord.Colour.from_rgb(
                                             255, 255, 0),
-                                        description=f"✅ Bought {value}x {type} for `{cost:,}{config['currency_symbol']}`\nDiscount: `{discount*100}%`\nBartering discount included in discount: `{config['players'][ctx.author.id]['stats']['bartering']*2.5}%`".replace(
+                                        description=f"✅ Bought {value}x {type} for `{cost:,}{config['currency_symbol']}`\nDiscount: `{discount*100}%`\nBartering discount included in discount: `{config['players'][ctx.author.id]['stats']['bartering']*config['bartering_rate']*100}%`".replace(
                                             ",", " ")
                                     )
                                     embed.set_author(
@@ -1933,18 +1940,18 @@ class PlayerShop(commands.Cog):
                 await ctx.send(embed=embed)
                 return
 
-            if config["players"][ctx.author.id]["balance"] >= cost - (cost * config['players'][ctx.author.id]['stats']['bartering']*0.025):
+            if config["players"][ctx.author.id]["balance"] >= cost - (cost * config['players'][ctx.author.id]['stats']['trading']*config['trading_rate']):
                 config["players"][ctx.author.id]["inventory"][item] = config["players"][user.id]["inventory"][item]
                 config["players"][ctx.author.id]["balance"] -= cost - \
                     (cost * config['players'][ctx.author.id]
-                     ['stats']['bartering']*0.025)
+                     ['stats']['trading']*config['trading_rate'])
                 config["players"][user.id]["balance"] += cost
                 del config["players"][user.id]["player_shop"][item]
                 del config["players"][user.id]["inventory"][item]
 
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"✅ Bought {item} for {cost:,}{config['currency_symbol']} and item was added to your inventory\nTrading discount: `{config['players'][ctx.author.id]['stats']['bartering']*2.5}%`".replace(
+                    description=f"✅ Bought {item} for {cost:,}{config['currency_symbol']} and item was added to your inventory\nTrading discount: `{config['players'][ctx.author.id]['stats']['trading']*config['trading_rate']*100}%`".replace(
                         ",", " ")
                 )
                 embed.set_author(name="Buy", icon_url=bot.user.avatar_url)
@@ -2231,7 +2238,7 @@ class Inventory(commands.Cog):
 
         config.save()
 
-    @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: discord.Member> <item: str>")
+    @commands.command(name="remove-player-item", help="Remove item from players inventory: remove-player-item <user: Union[str, discord.Member]> <item: str>")
     @commands.has_permissions(administrator=True)
     async def remove_player_item(self, ctx: Context, user: Union[str, discord.Member], *, item: str):
         if user == "loot-table":
@@ -2489,6 +2496,8 @@ class Expeditions(commands.Cog):
                     name="Level", value=mission["level"], inline=True)
                 embed.add_field(name="Chance", value=str(
                     mission["chance"]) + "%", inline=True)
+                embed.add_field(name="Time to complete", value=str(
+                    mission["hours"]) + "h", inline=True)
                 embed.add_field(name="Xp", value=mission["xp"], inline=True)
                 embed.add_field(name="Common", value=str(
                     mission["loot-table"]["common"]*100) + "%", inline=False)
@@ -2524,6 +2533,10 @@ class Expeditions(commands.Cog):
     async def mission_start(self, ctx: Context, mission_name: str):
         global time
         global asyncs_on_hold
+
+        if config["block_asyncs"]:
+            await ctx.send("Function blocked by 'hold-asyncs'")
+            return
 
         user = ctx.author
         mission = config["missions"][mission_name]
@@ -2586,8 +2599,9 @@ class Expeditions(commands.Cog):
 
         if random.randint(0, 100) < mission["chance"]:
             msg = "✅ Successs"
-            config["players"][user.id]["xp"] += mission["xp"]
-            await levelup_check(ctx)
+            config["players"][user.id]["xp"] += mission["xp"] + mission["xp"] * \
+                config["players"][ctx.author.id]["stats"]["learning"] * \
+                config["learning_rate"]
 
             if len(config["players"][ctx.author.id]["inventory"]) < config["max_player_items"]:
 
@@ -2686,11 +2700,11 @@ class Battle(commands.Cog):
                 user = ctx.author
 
             manpower = int(config['players'][user.id]['manpower'] + (config['players'][user.id]
-                                                                     ['manpower']*config['players'][ctx.author.id]['stats']['warlord']*0.025))
+                                                                     ['manpower']*config['players'][ctx.author.id]['stats']['warlord']*config['warlord_rate']))
 
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
-                description=f"Manpower of <@{user.id}> is {manpower:,}\nWarlord boost: `{config['players'][ctx.author.id]['stats']['warlord']*2.5}%`".replace(
+                description=f"Manpower of <@{user.id}> is {manpower:,}\nWarlord boost: `{config['players'][ctx.author.id]['stats']['warlord']*config['warlord_rate']*100}%`".replace(
                     ",", " ")
             )
             embed.set_author(name="Manpower", icon_url=bot.user.avatar_url)
@@ -2699,10 +2713,14 @@ class Battle(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="attack", help="Automatized battle system")
+    @commands.command(name="attack", help="Automatized battle system: attack <player_manpower: int> ")
     async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, skip_colonization: str = "false", income: int = 0, income_role: discord.Role = None):
         global time
         global asyncs_on_hold
+
+        if config["block_asyncs"]:
+            await ctx.send("Function blocked by 'hold-asyncs'")
+            return
 
         random.seed(time.time())
 
@@ -2838,16 +2856,17 @@ class Battle(commands.Cog):
         config.save()
 
 
-bot.add_cog(Money())
-bot.add_cog(Income())
-bot.add_cog(Essentials())
-bot.add_cog(Config())
-bot.add_cog(Development())
-bot.add_cog(Settings())
-bot.add_cog(PlayerShop())
-bot.add_cog(Inventory())
-bot.add_cog(Player())
-bot.add_cog(Expeditions())
-bot.add_cog(Battle())
+if __name__ == "__main__":
+    bot.add_cog(Money())
+    bot.add_cog(Income())
+    bot.add_cog(Essentials())
+    bot.add_cog(Config())
+    bot.add_cog(Development())
+    bot.add_cog(Settings())
+    bot.add_cog(PlayerShop())
+    bot.add_cog(Inventory())
+    bot.add_cog(Player())
+    bot.add_cog(Expeditions())
+    bot.add_cog(Battle())
 
-bot.run(args.token)
+    bot.run(args.token)
