@@ -48,7 +48,13 @@ loglevels = {
 }
 
 logging.basicConfig(
-    level=loglevels[args.logging], handlers=[logging.FileHandler(args.file, args.mode, 'utf-8'), logging.StreamHandler(sys.stdout)])
+    level=loglevels[args.logging], handlers=[logging.FileHandler(args.file, args.mode, 'utf-8'), logging.StreamHandler(sys.stdout)], format='%(levelname)s | %(asctime)s | %(name)s | %(message)s', datefmt=r"%H:%M:%S")
+
+# region Intents
+intents = discord.Intents.default()
+intents.members = True
+intents.presences = True
+# endregion
 
 
 class rarity(object):
@@ -102,6 +108,33 @@ async def levelup_check(ctx: Context):
         logging.debug(
             f"{ctx.author.display_name} is now level {config['players'][player.id]['level']}")
         await levelup_check(ctx)
+
+
+async def confirm(ctx: Context, message: str, timeout: int = 20, author: str = "Confirm"):
+    try:
+        embed = discord.Embed(
+            colour=discord.Colour.from_rgb(255, 255, 0),
+            description=message
+        )
+        embed.set_author(name=author, icon_url=bot.user.avatar_url)
+
+        msg = await ctx.send(embed=embed)
+        await msg.add_reaction("✅")
+        await msg.add_reaction("❌")
+
+        def check(reaction, user):
+            return user == ctx.message.author and str(reaction.emoji) in ['✅', '❌']
+
+        reaction, _ = await bot.wait_for('reaction_add', timeout=timeout, check=check)
+        if reaction.emoji == '❌':
+            await msg.delete()
+            return False
+        elif reaction.emoji == '✅':
+            await msg.delete()
+            return True
+    except asyncio.TimeoutError:
+        await msg.delete()
+        return False
 
 
 class Configuration():
@@ -210,7 +243,7 @@ config = Configuration()
 config.load()
 
 bot = commands.Bot(command_prefix=commands.when_mentioned_or(config["prefix"]), help_command=PrettyHelp(
-    color=discord.Colour.from_rgb(255, 255, 0), show_index=True, sort_commands=True))
+    color=discord.Colour.from_rgb(255, 255, 0), show_index=True, sort_commands=True), intents=intents)
 
 members = list(config["players"].keys())
 roles = list(config["income"].keys())
@@ -1280,7 +1313,14 @@ class Config(commands.Cog):
                 if word == last:
                     try:
                         if mode == "set":
-                            current[last] = int(message[-1])
+                            if last in current.keys():
+                                current[last] = int(message[-1])
+                            else:
+                                confirmed = await confirm(ctx, f"Not found in config: Create new entry ?")
+                                if confirmed:
+                                    current[last] = int(message[-1])
+                                else:
+                                    return
                         elif mode == "add":
                             current[last] += int(message[-1])
                         else:
@@ -1288,13 +1328,29 @@ class Config(commands.Cog):
                     except:
                         try:
                             if mode == "set":
-                                current[last] = float(message[-1])
+                                if last in current.keys():
+                                    current[last] = float(message[-1])
+                                else:
+                                    confirmed = await confirm(ctx, f"Not found in config: Create new entry ?")
+                                    if confirmed:
+                                        current[last] = float(message[-1])
+                                    else:
+                                        return
+
                             elif mode == "add":
                                 current[last] += float(message[-1])
                             else:
                                 current[last] -= float(message[-1])
                         except:
-                            current[last] = message[-1]
+                            if last in current.keys():
+                                current[last] = message[-1]
+                            else:
+                                confirmed = await confirm(ctx, f"Not found in config: Create new entry ?")
+                                if confirmed:
+                                    current[last] = message[-1]
+                                else:
+                                    return
+
                         finally:
                             mode = None
                     embed = discord.Embed(
@@ -1335,6 +1391,10 @@ class Config(commands.Cog):
 
 class Development(commands.Cog):
     """Only for developers, who know how to operate this bot"""
+
+    @commands.command(name="test")
+    async def test(self, ctx: Context, var: bool):
+        await ctx.send(f"{var} | {type(var)}")
 
     @commands.command(name="json-encode", help="Encode string to yaml format: json-encode <value: string>", pass_context=True)
     async def yaml_encode(self, ctx: Context, *message):
@@ -1485,6 +1545,10 @@ class Settings(commands.Cog):
     @commands.command(name="shutdown", help="Show the bot, whos da boss: shutdown", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def shutdown(self, ctx: Context):
+        confirmed = await confirm(ctx, "Terminate process ?")
+        if not confirmed:
+            return
+
         logging.warning("Shutting down bot")
         embed = discord.Embed(
             colour=discord.Colour.from_rgb(255, 255, 0),
@@ -1554,6 +1618,10 @@ class Settings(commands.Cog):
                 await ctx.send(embed=embed)
                 return
 
+            confirmed = await confirm(ctx, f"Remove {item} ?")
+            if not confirmed:
+                return
+
             for member in config.config["players"]:
                 config["players"][member]["maxupgrade"].pop(item)
                 config["players"][member]["upgrade"].pop(item)
@@ -1576,6 +1644,10 @@ class Settings(commands.Cog):
     @commands.has_permissions(administrator=True)
     async def command_prefix(self, ctx: Context, prefix: str):
         try:
+            confirmed = await confirm(ctx, "Change prefix ?")
+            if not confirmed:
+                return
+
             config.config["prefix"] = prefix
             config.save()
             bot.command_prefix = prefix
@@ -2155,6 +2227,10 @@ class Inventory(commands.Cog):
     async def recycle(self, ctx: Context, *, item: str):
         try:
             if item in config["players"][ctx.author.id]["inventory"]:
+                confirmed = await confirm(ctx, f"Item found: Recycle {item} ?")
+                if not confirmed:
+                    return
+
                 del config["players"][ctx.author.id]["inventory"][item]
 
                 embed = discord.Embed(
@@ -2529,8 +2605,8 @@ class Expeditions(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="expedition", help="Start an expedition: expedition <name: str>", aliases=["mission-start"])
-    async def mission_start(self, ctx: Context, mission_name: str):
+    @commands.command(name="expedition", help="Start an expedition: expedition <name: str>", aliases=["expedition-start"])
+    async def mission_start(self, ctx: Context, expedition_name: str, mention: bool = True):
         global time
         global asyncs_on_hold
 
@@ -2539,9 +2615,9 @@ class Expeditions(commands.Cog):
             return
 
         user = ctx.author
-        mission = config["missions"][mission_name]
+        expedition = config["missions"][expedition_name]
 
-        if not config["players"][user.id]["level"] >= mission["level"]:
+        if not config["players"][user.id]["level"] >= expedition["level"]:
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"❌ Your level is too low"
@@ -2550,7 +2626,7 @@ class Expeditions(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        if not config["players"][user.id]["balance"] >= mission["cost"]:
+        if not config["players"][user.id]["balance"] >= expedition["cost"]:
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"❌ Not enought money"
@@ -2559,7 +2635,7 @@ class Expeditions(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        if not config["players"][user.id]["manpower"] >= mission["manpower"]:
+        if not config["players"][user.id]["manpower"] >= expedition["manpower"]:
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
                 description=f"❌ Not enought manpower"
@@ -2568,44 +2644,45 @@ class Expeditions(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        config["players"][user.id]["balance"] -= mission["cost"]
-        config["players"][user.id]["manpower"] -= mission["manpower"]
+        config["players"][user.id]["balance"] -= expedition["cost"]
+        config["players"][user.id]["manpower"] -= expedition["manpower"]
 
         random.seed(time.time())
 
         _time = datetime.datetime.now(tz=pytz.timezone(
             'Europe/Prague')).strftime(r'%H:%M:%S')
         a_time = (datetime.datetime.now(tz=pytz.timezone('Europe/Prague')) +
-                  datetime.timedelta(hours=mission["hours"])).strftime(r'%H:%M:%S')
+                  datetime.timedelta(hours=expedition["hours"])).strftime(r'%H:%M:%S')
         asyncs_on_hold.append(a_time)
-        seconds = mission["hours"] * 3600
+        seconds = expedition["hours"] * 3600
 
-        embed = discord.Embed(title=mission_name, description=mission["description"]
-                              if mission["description"] != None else "", color=discord.Colour.from_rgb(255, 255, 0))
+        embed = discord.Embed(title=expedition_name, description=expedition["description"]
+                              if expedition["description"] != None else "", color=discord.Colour.from_rgb(255, 255, 0))
         embed.set_author(name="Succesfully added to queue",
                          icon_url=bot.user.avatar_url)
         embed.add_field(name="Time", value=(datetime.datetime.now(tz=pytz.timezone(
-            'Europe/Prague')) + datetime.timedelta(hours=mission["hours"])).strftime(r'%H:%M:%S'), inline=False)
+            'Europe/Prague')) + datetime.timedelta(hours=expedition["hours"])).strftime(r'%H:%M:%S'), inline=False)
         embed.add_field(name="Manpower on hold",
-                        value=mission["manpower"], inline=False)
+                        value=expedition["manpower"], inline=False)
         embed.add_field(name="Required level",
-                        value=mission["level"], inline=False)
-        embed.add_field(name="Chance", value=mission["chance"], inline=False)
-        embed.add_field(name="XP", value=mission["xp"], inline=False)
+                        value=expedition["level"], inline=False)
+        embed.add_field(
+            name="Chance", value=expedition["chance"], inline=False)
+        embed.add_field(name="XP", value=expedition["xp"], inline=False)
         await ctx.send(embed=embed)
 
         await asyncio.sleep(delay=seconds)
         await ctx.send("Mission started")
 
-        if random.randint(0, 100) < mission["chance"]:
+        if random.randint(0, 100) < expedition["chance"]:
             msg = "✅ Successs"
-            config["players"][user.id]["xp"] += mission["xp"] + mission["xp"] * \
+            config["players"][user.id]["xp"] += expedition["xp"] + expedition["xp"] * \
                 config["players"][ctx.author.id]["stats"]["learning"] * \
                 config["learning_rate"]
 
             if len(config["players"][ctx.author.id]["inventory"]) < config["max_player_items"]:
 
-                rarities = mission["loot-table"]
+                rarities = expedition["loot-table"]
                 items = config["loot-table"]
 
                 weighted_list = ['common'] * int(rarities["common"]*100) + ['uncommon'] * int(rarities["uncommon"]*100) + \
@@ -2684,7 +2761,10 @@ class Expeditions(commands.Cog):
         embed.set_author(name="Expedition", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
 
-        config["players"][user.id]["manpower"] += mission["manpower"]
+        if mention:
+            await ctx.send(ctx.author.mention)
+
+        config["players"][user.id]["manpower"] += expedition["manpower"]
 
         asyncs_on_hold.remove(a_time)
         config.save()
@@ -2714,7 +2794,7 @@ class Battle(commands.Cog):
             await ctx.send(traceback.format_exc())
 
     @commands.command(name="attack", help="Automatized battle system: attack <player_manpower: int> ")
-    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, skip_colonization: str = "false", income: int = 0, income_role: discord.Role = None):
+    async def attack(self, ctx: Context, player_manpower: int, enemy_manpower: int, hours: float, player_support: int = 0, enemy_support: int = 0, mention: bool = True, skip_colonization: bool = False, income: int = 0, income_role: discord.Role = None):
         global time
         global asyncs_on_hold
 
@@ -2741,18 +2821,6 @@ class Battle(commands.Cog):
             await ctx.send(embed=embed)
             return
 
-        if skip_colonization == "false":
-            if config["players"][ctx.author.id]["balance"] < estart:
-                logging.debug(f"Not enought money for colonization")
-                embed = discord.Embed(
-                    colour=discord.Colour.from_rgb(255, 255, 0),
-                    description=f"❌ Not enought money for colonization"
-                )
-                await ctx.send(embed=embed)
-                return
-            else:
-                config["players"][ctx.author.id]["balance"] -= estart
-
         if config["players"][ctx.author.id]["manpower"] >= pstart:
             config["players"][ctx.author.id]["manpower"] -= pstart
         else:
@@ -2763,6 +2831,21 @@ class Battle(commands.Cog):
             )
             await ctx.send(embed=embed)
             return
+
+        if skip_colonization == False:
+            if config["players"][ctx.author.id]["balance"] < estart:
+                logging.debug(f"Not enought money for colonization")
+                embed = discord.Embed(
+                    colour=discord.Colour.from_rgb(255, 255, 0),
+                    description=f"❌ Not enought money for colonization"
+                )
+                await ctx.send(embed=embed)
+                config["players"][ctx.author.id]["manpower"] += pstart
+                return
+            else:
+                config["players"][ctx.author.id]["balance"] -= estart
+
+        config.save()
 
         embed = discord.Embed(
             title="Attack", description=f"<@{ctx.author.id}>", color=discord.Colour.from_rgb(255, 255, 0))
@@ -2822,7 +2905,7 @@ class Battle(commands.Cog):
 
         if iteration == 4 and player_manpower > 0 and enemy_manpower > 0:
             msg = "❌ Out of rolls"
-            if skip_colonization == "false":
+            if skip_colonization == False:
                 config["players"][ctx.author.id]["balance"] += estart
         elif player_manpower > 0 and enemy_manpower == 0:
             msg = "✅ You won"
@@ -2835,11 +2918,11 @@ class Battle(commands.Cog):
                         config["income"][income_role.id] += income
         elif player_manpower == 0 and enemy_manpower > 0:
             msg = "❌ You lost"
-            if skip_colonization == "false":
+            if skip_colonization == False:
                 config["players"][ctx.author.id]["balance"] += estart
         else:
             msg = "❓ Tie ❓"
-            if skip_colonization == "false":
+            if skip_colonization == False:
                 config["players"][ctx.author.id]["balance"] += estart
 
         config["players"][ctx.author.id]["manpower"] += player_manpower
@@ -2851,6 +2934,9 @@ class Battle(commands.Cog):
         )
         embed.set_author(name="Attack", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
+
+        if mention:
+            await ctx.send(ctx.author.mention)
 
         asyncs_on_hold.remove(a_time)
         config.save()
