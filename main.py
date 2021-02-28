@@ -1,4 +1,5 @@
 import argparse
+import ast
 import asyncio
 import datetime
 import json
@@ -16,7 +17,7 @@ from typing import Union
 import discord
 import DiscordUtils
 import pytz
-from discord import NotFound
+from discord import NotFound, Status
 from discord.ext import commands, tasks
 from discord.ext.commands import CommandNotFound
 from discord.ext.commands.errors import MissingRequiredArgument
@@ -73,6 +74,22 @@ def jsonKeys2int(x):
         except:
             pass
     return x
+
+
+def insert_returns(body):
+    # insert return stmt if the last expression is a expression statement
+    if isinstance(body[-1], ast.Expr):
+        body[-1] = ast.Return(body[-1].value)
+        ast.fix_missing_locations(body[-1])
+
+    # for if statements, we insert returns into the body and the orelse
+    if isinstance(body[-1], ast.If):
+        insert_returns(body[-1].body)
+        insert_returns(body[-1].orelse)
+
+    # for with blocks, again we insert returns into the body
+    if isinstance(body[-1], ast.With):
+        insert_returns(body[-1].body)
 
 
 def sizeof_fmt(num, suffix='B'):
@@ -242,8 +259,10 @@ class Configuration():
 config = Configuration()
 config.load()
 
+paused = False
+
 bot = commands.Bot(command_prefix=commands.when_mentioned_or(config["prefix"]), help_command=PrettyHelp(
-    color=discord.Colour.from_rgb(255, 255, 0), show_index=True, sort_commands=True), intents=intents)
+    color=discord.Colour.from_rgb(255, 255, 0), show_index=True, sort_commands=True, dm_help=None), intents=intents)
 
 members = list(config["players"].keys())
 roles = list(config["income"].keys())
@@ -443,7 +462,7 @@ async def on_ready():
         f"Upgrades: {list(config['upgrade'].keys())}")
     print(f"\n{'-'*100}\n")
 
-    await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}"))
+    await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}help"), status=Status.online)
 
 
 @bot.event
@@ -451,7 +470,11 @@ async def on_message(message):
     if not message.author == bot.user:
         logging.info(
             f"{message.author.display_name} ■ {message.author.id}: {message.content}")
-        await bot.process_commands(message)
+
+        if not paused or "unpause" in message.content:
+            await bot.process_commands(message)
+        else:
+            await message.channel.send("❌ Paused")
 
 
 @bot.event
@@ -1020,9 +1043,15 @@ class Income(commands.Cog):
                 item = config["players"][ctx.author.id]["equiped"][item]
                 income_boost += item["income"]
 
+            stewardship_bonus = round(
+                config['players'][ctx.author.id]['stats']['stewardship']*income*config['stewardship_rate'], 5)
+
+            income = (income*income_multiplier)+income_boost+(
+                stewardship_bonus)
+
             embed = discord.Embed(
                 colour=discord.Colour.from_rgb(255, 255, 0),
-                description=f"Income: `{(income*income_multiplier)+income_boost:,}{config['currency_symbol']}`\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`".replace(
+                description=f"Income: `{income:,}{config['currency_symbol']}`\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus `{stewardship_bonus}%`".replace(
                     ",", " ")
             )
             embed.set_author(name="Income", icon_url=bot.user.avatar_url)
@@ -1462,51 +1491,54 @@ class Development(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="python3", help="Execute python code: python3 <command>", pass_context=True)
+    @commands.command(name="eval", help="Execute python code: eval <command>", pass_context=True)
     @commands.has_permissions(administrator=True)
-    async def python3(self, ctx: Context, *message):
-        logging.debug(f"Executing python command: {' '.join(message)}")
-        try:
-            message = list(message)
-            for i in range(len(message)):
-                if re.findall(re.compile(r"[<][@][!][0-9]+[>]"), message[i]) != []:
-                    pattern = re.compile(r'[0-9]+')
-                    _users = bot.guilds[0].members
-                    _id = int(re.findall(pattern, message[i])[0])
-                    for _user in _users:
-                        if _user.id == _id:
-                            logging.info(
-                                f"{message[i]} was replaced by {_user.id}")
-                            message[i] = _user.id
-                    break
+    async def eval_fn(self, ctx: Context, *, cmd):
+        """Evaluates input.
+        Input is interpreted as newline seperated statements.
+        If the last statement is an expression, that is the return value.
+        Usable globals:
+        - `bot`: the bot instance
+        - `discord`: the discord module
+        - `commands`: the discord.ext.commands module
+        - `ctx`: the invokation context
+        - `__import__`: the builtin `__import__` function
+        Such that `>eval 1 + 1` gives `2` as the result.
+        The following invokation will cause the bot to send the text '9'
+        to the channel of invokation and return '3' as the result of evaluating
+        >eval ```
+        a = 1 + 2
+        b = a * 2
+        await ctx.send(a + b)
+        a
+        ```
+        """
+        fn_name = "_eval_expr"
 
-                if re.findall(re.compile(r"[<][@][0-9]+[>]"), message[i]) != []:
-                    pattern = re.compile(r'[0-9]+')
-                    _users = bot.guilds[0].members
-                    _id = int(re.findall(pattern, message[i])[0])
-                    for _user in _users:
-                        if _user.id == _id:
-                            logging.info(
-                                f"{message[i]} was replaced by {_user.id}")
-                            message[i] = _user.id
-                    break
+        cmd = cmd.strip("` ")
 
-                if re.findall(re.compile(r"[<][@][&][0-9]+[>]"), message[i]) != []:
-                    pattern = re.compile(r'[0-9]+')
-                    _roles = bot.guilds[0].roles
-                    _id = int(re.findall(pattern, message[i])[0])
-                    for _role in _roles:
-                        if _role.id == _id:
-                            logging.info(
-                                f"{message[i]} was replaced by {_role.id}")
-                            message[i] = _role.id
-                    break
+        # add a layer of indentation
+        cmd = "\n".join(f"    {i}" for i in cmd.splitlines())
 
-            result = eval(" ".join(message))
-            await ctx.send(result)
-        except:
-            print(traceback.format_exc())
-            await ctx.send(traceback.format_exc())
+        # wrap in async def body
+        body = f"async def {fn_name}():\n{cmd}"
+
+        parsed = ast.parse(body)
+        body = parsed.body[0].body
+
+        insert_returns(body)
+
+        env = {
+            'bot': ctx.bot,
+            'discord': discord,
+            'commands': commands,
+            'ctx': ctx,
+            '__import__': __import__
+        }
+        exec(compile(parsed, filename="<ast>", mode="exec"), env)
+
+        result = (await eval(f"{fn_name}()", env))
+        await ctx.send(result)
 
     @commands.command(name="execute", help="Execute python code: execute <command>", pass_context=True)
     @commands.has_permissions(administrator=True)
@@ -1557,7 +1589,49 @@ class Settings(commands.Cog):
         embed.set_author(name="Shutdown", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
         logging.info("Shutting down...")
+
+        await bot.change_presence(activity=discord.Game(name=f"Shutting down..."), status=Status.offline)
         sys.exit()
+
+    @commands.command(name="pause", help="Show the bot, whos da boss: shutdown", pass_context=True)
+    @commands.has_permissions(administrator=True)
+    async def pause(self, ctx: Context):
+        global paused
+
+        confirmed = await confirm(ctx, "Pause process ?")
+        if not confirmed:
+            return
+
+        embed = discord.Embed(
+            colour=discord.Colour.from_rgb(255, 255, 0),
+            description="✅ Paused..."
+        )
+        embed.set_author(name="Pause", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
+        paused = True
+        logging.info("Paused...")
+
+        await bot.change_presence(activity=discord.Game(name=f"Paused"), status=Status.do_not_disturb)
+
+    @commands.command(name="unpause", help="Show the bot, whos da boss: shutdown", pass_context=True)
+    @commands.has_permissions(administrator=True)
+    async def unpause(self, ctx: Context):
+        global paused
+
+        confirmed = await confirm(ctx, "Unpause process ?")
+        if not confirmed:
+            return
+
+        embed = discord.Embed(
+            colour=discord.Colour.from_rgb(255, 255, 0),
+            description="✅ Unpaused..."
+        )
+        embed.set_author(name="Unpause", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
+        paused = False
+        logging.info("Unpaused...")
+
+        await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}help"), status=Status.online)
 
     @commands.command(name="add-item", pass_context=True, help="Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] [--require REQUIRE] name cost")
     @commands.has_permissions(administrator=True)
@@ -1602,7 +1676,7 @@ class Settings(commands.Cog):
 
         config.save()
 
-    @commands.command(name="remove-item", pass_context=True, help="Remove item from database: remove-item <name: string>")
+    @commands.command(name="remove-item", pass_context=True, help="Remove item from database: remove-item <name: str>")
     @commands.has_permissions(administrator=True)
     async def remove_item(self, ctx: Context, item: str):
         try:
@@ -1640,7 +1714,7 @@ class Settings(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="prefix", help="Change prefix of da bot: prefix <prefix: string>", pass_context=True)
+    @commands.command(name="prefix", help="Change prefix of da bot: prefix <prefix: str>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def command_prefix(self, ctx: Context, prefix: str):
         try:
@@ -1662,9 +1736,9 @@ class Settings(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-        await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}"))
+        await bot.change_presence(activity=discord.Game(name=f"Try: {config['prefix']}help"), status=Status.online)
 
-    @commands.command(name="deltatime", help="Sets time between allowed !work commands: deltatime <value: integer>", pass_context=True)
+    @commands.command(name="deltatime", help="Sets time between allowed !work commands: deltatime <value: int>", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def deltatime(self, ctx: Context, value: int = config["deltatime"]):
         try:
@@ -1681,10 +1755,11 @@ class Settings(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="bravo-six-going-dark", help="Deletes messages: bravo-six-going-dark <messages: integer>", pass_context=True)
+    @commands.command(name="cleanup", help="Deletes messages: cleanup <messages: int = 100>", pass_context=True)
     @commands.has_permissions(administrator=True)
-    async def bravo_six_going_dark(self, ctx: Context, messages: int):
-        await ctx.channel.purge(limit=messages)
+    async def cleanup(self, ctx: Context, messages: int = 100):
+        if await confirm(ctx, message=f"Clean {messages} messages ?"):
+            await ctx.channel.purge(limit=messages)
 
     @commands.command(name="on-join-dm", help="Set message to be send when player joins: on-join-dm <message: str>", pass_context=True)
     @commands.has_permissions(administrator=True)

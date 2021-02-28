@@ -192,7 +192,7 @@ skillpoints             Number of your skillpoints: skillpoints
 
 ```plain
 add-item                Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] [--require REQUIRE] name cost
-bravo-six-going-dark    Deletes messages: bravo-six-going-dark <messages: int>
+cleanup                 Deletes messages: cleanup <messages: int = 100>
 deltatime               Sets time between allowed !work commands: deltatime <value: int>
 on-join-dm              Set message to be send when player joins: on-join-dm <message: str>
 prefix                  Change prefix of da bot: prefix <prefix: str>
