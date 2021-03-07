@@ -12,6 +12,8 @@ import shlex
 import sys
 import time
 import traceback
+import difflib
+import codecs
 from typing import Union
 
 import discord
@@ -25,6 +27,7 @@ from discord.ext.commands.context import Context
 from discord.member import Member
 from discord.utils import get
 from pretty_help import PrettyHelp
+
 
 # region Parser
 parser = argparse.ArgumentParser(
@@ -40,6 +43,8 @@ parser.add_argument("--token", default=os.environ["TRINITY"], type=str,
 args = parser.parse_args()
 # endregion
 
+
+# region Logging
 loglevels = {
     "DEBUG": logging.DEBUG,
     "INFO": logging.INFO,
@@ -50,6 +55,11 @@ loglevels = {
 
 logging.basicConfig(
     level=loglevels[args.logging], handlers=[logging.FileHandler(args.file, args.mode, 'utf-8'), logging.StreamHandler(sys.stdout)], format='%(levelname)s | %(asctime)s | %(name)s | %(message)s', datefmt=r"%H:%M:%S")
+# endregion
+
+
+missing = object()
+
 
 # region Intents
 intents = discord.Intents.default()
@@ -58,6 +68,7 @@ intents.presences = True
 # endregion
 
 
+# region Classes
 class rarity(object):
     common = 0xABABAB
     uncommon = 0x12CC00
@@ -67,6 +78,82 @@ class rarity(object):
     event = 0xFF0000
 
 
+class Value:
+    '''
+    Simple class that enables `await value.wait_for(foo)` to wait until the
+    variable is set to the expected value, without blocking the event loop.
+    Loosely modeled after asyncio.Event and asyncio.Condition
+    Usage:
+        import asyncio
+        loop = asyncio.new_event_loop()
+        signal = Value(loop=loop, value=False)
+        async def iterate_values(values, fut):
+            for value in values:
+                signal.value = value
+                print("Set signal to {}".format(value))
+                await asyncio.sleep(1, loop=loop)
+            fut.set_result(True)
+        async def print_when(value):
+            await signal.wait_for(value)
+            print("Signal reached desired value {}".format(value))
+        complete = asyncio.Future(loop=loop)
+        loop.create_task(print_when("foo"))
+        loop.create_task(print_when(3))
+        loop.create_task(iterate_values([1, 2, 3, "foo", 4], complete))
+        loop.run_until_complete(complete)
+    '''
+
+    def __init__(self, loop, value=None, expected=missing):
+        self.loop = loop
+        self.watchers = set()
+        self._value = value
+        self._expected = expected
+
+    @property
+    def value(self):
+        return self._value
+
+    @value.setter
+    def value(self, v):
+        self._value = v
+        # Force all `wait_for` to re-check the value
+        for watcher in self.watchers:
+            watcher.set()
+
+    async def wait_for(self, value):
+        '''
+        Yields when the Value is set to the given value.
+        Doesn't block the event loop with a busy `while` loop.
+        '''
+        # Don't wait if we're already at the expected value
+        if value == self.value:
+            return
+
+        watcher = asyncio.Event(loop=self.loop)
+        self.watchers.add(watcher)
+
+        # We'll only re-check the condition when the value changes,
+        # yielding back to the poller when it's not equal.
+        while self.value != value:
+            await watcher.wait()
+            watcher.clear()
+
+        # Clean up the watcher now that we've reached the expected value
+        self.watchers.remove(watcher)
+
+    async def wait(self):
+        '''
+        Waits until the Value is set to the given `expected` value.
+        Raises if `expected` was not set.
+        '''
+        if self._expected is missing:
+            raise RuntimeError(
+                "Must define `expected` when intializing the Value")
+        await self.wait_for(self._expected)
+# endregion
+
+
+# region Functions
 def jsonKeys2int(x):
     if isinstance(x, dict):
         try:
@@ -113,15 +200,15 @@ async def levelup_check(ctx: Context):
     xp_for_level = int(xp_for_level)
 
     if xp >= xp_for_level:
-        embed = discord.Embed(
-            colour=discord.Colour.from_rgb(255, 255, 0),
-            description=f'You are now level `{config["players"][player.id]["level"] + 1}`'
-        )
-        embed.set_author(name="Level up", icon_url=bot.user.avatar_url)
-        await ctx.send(embed=embed)
         config["players"][player.id]["xp"] -= xp_for_level
         config["players"][player.id]["level"] += 1
         config["players"][player.id]["skillpoints"] += 1
+        embed = discord.Embed(
+            colour=discord.Colour.from_rgb(255, 255, 0),
+            description=f'You are now level `{config["players"][player.id]["level"]}`'
+        )
+        embed.set_author(name="Level up", icon_url=bot.user.avatar_url)
+        await ctx.send(embed=embed)
         logging.debug(
             f"{ctx.author.display_name} is now level {config['players'][player.id]['level']}")
         await levelup_check(ctx)
@@ -152,6 +239,7 @@ async def confirm(ctx: Context, message: str, timeout: int = 20, author: str = "
     except asyncio.TimeoutError:
         await msg.delete()
         return False
+# endregion
 
 
 class Configuration():
@@ -163,7 +251,7 @@ class Configuration():
             logging.info(
                 f"Loading: {self.CONFIG}")
             self.config = json.load(
-                open(self.CONFIG), object_hook=jsonKeys2int)
+                open(self.CONFIG, encoding="utf-8"), object_hook=jsonKeys2int)
             type(self.config.keys())
         except:
             logging.info(traceback.format_exc())
@@ -222,8 +310,9 @@ class Configuration():
 
     def save(self):
         try:
-            with open(self.CONFIG, "w") as f:
-                json.dump(self.config, f, indent=4)
+            with open(self.CONFIG, "w", encoding="utf-8") as f:
+                json.dump(self.config, f, indent=4,
+                          sort_keys=True, ensure_ascii=False)
             logging.debug("Config saved")
         except:
             logging.info(traceback.format_exc())
@@ -793,6 +882,14 @@ class Money(commands.Cog):
         logging.debug(f"{ctx.author.display_name} is buying {type} * {value}")
         try:
             if type in config["upgrade"].keys():
+                pass
+            else:
+                _placeholder = difflib.get_close_matches(
+                    type, config["upgrade"].keys())
+                if await confirm(ctx, f"Not found in shop - closest match: {_placeholder}"):
+                    type = _placeholder[0] if _placeholder != [] else type
+
+            if type in config["upgrade"].keys():
                 if config["upgrade"][type]["require"] != None:
                     required = config["upgrade"][type]["require"]
                     player_own_required = True if config["players"][
@@ -987,6 +1084,57 @@ class Money(commands.Cog):
             )
             embed.set_author(name="Balance", icon_url=bot.user.avatar_url)
             await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="shop", help="Show shop")
+    async def shop(self, ctx: Context):
+        try:
+            e_list = []
+            index = 1
+            msg = ""
+            _sorted_keys = list(config["upgrade"].keys())
+            _sorted_keys.sort(key=str.lower)
+
+            _sorted = {}
+
+            for item in _sorted_keys:
+                _sorted[item] = config["upgrade"][item]
+
+            for item in _sorted:
+                if "manpower" in config["upgrade"][item]:
+                    if config["upgrade"][item]["manpower"] != 0:
+                        manpower = f'`Manpower:` {config["upgrade"][item]["manpower"]}'
+                    else:
+                        manpower = ""
+                else:
+                    manpower = ""
+                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config[
+                    "players"][ctx.author.id]["maxupgrade"][item] != None else f'{config["players"][ctx.author.id]["upgrade"][item]}/Not limited'
+                msg += f'`{item}` {stock} `Cost:` {config["upgrade"][item]["cost"]:,}{config["currency_symbol"]} {manpower}\n'.replace(
+                    ",", " ")
+                if index == 30:
+                    embed = discord.Embed(
+                        colour=discord.Colour.from_rgb(255, 255, 0),
+                        description=msg
+                    )
+                    embed.set_author(name="Shop", icon_url=bot.user.avatar_url)
+                    e_list.append(embed)
+                    msg = ""
+                    index = 1
+                else:
+                    index += 1
+            embed = discord.Embed(
+                colour=discord.Colour.from_rgb(255, 255, 0),
+                description=msg
+            )
+            embed.set_author(name="Shop", icon_url=bot.user.avatar_url)
+            e_list.append(embed)
+
+            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
+            paginator.remove_reactions = True
+            await paginator.run(e_list)
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -1404,7 +1552,7 @@ class Config(commands.Cog):
         size = os.path.getsize(config.CONFIG)
         embed = discord.Embed(
             colour=discord.Colour.from_rgb(255, 255, 0),
-            description=f"Size: {sizeof_fmt(size)}\nPath: {config.CONFIG}\nLines: {sum(1 for line in open(config.CONFIG))}"
+            description=f"Size: {sizeof_fmt(size)}\nPath: {config.CONFIG}\nLines: {sum(1 for line in open(config.CONFIG, encoding='utf-8'))}"
         )
         embed.set_author(name="Config-stats", icon_url=bot.user.avatar_url)
         await ctx.send(embed=embed)
@@ -1421,10 +1569,6 @@ class Config(commands.Cog):
 class Development(commands.Cog):
     """Only for developers, who know how to operate this bot"""
 
-    @commands.command(name="test")
-    async def test(self, ctx: Context, var: bool):
-        await ctx.send(f"{var} | {type(var)}")
-
     @commands.command(name="json-encode", help="Encode string to yaml format: json-encode <value: string>", pass_context=True)
     async def yaml_encode(self, ctx: Context, *message):
         logging.debug(f"Encoding: {' '.join(message)}")
@@ -1435,7 +1579,7 @@ class Development(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="reload", help="Reload members and roles: reload")
+    @commands.command(name="reload", help="Reload members and roles: reload", pass_context=True)
     @commands.has_permissions(administrator=True)
     async def reload(self, ctx: Context):
         logging.debug("Reloading config")
@@ -1532,6 +1676,7 @@ class Development(commands.Cog):
             'bot': ctx.bot,
             'discord': discord,
             'commands': commands,
+            'config': config,
             'ctx': ctx,
             '__import__': __import__
         }
@@ -1924,57 +2069,6 @@ class Essentials(commands.Cog):
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
 
-    @commands.command(name="shop", help="Show shop")
-    async def shop(self, ctx: Context):
-        try:
-            e_list = []
-            index = 1
-            msg = ""
-            _sorted_keys = list(config["upgrade"].keys())
-            _sorted_keys.sort(key=str.lower)
-
-            _sorted = {}
-
-            for item in _sorted_keys:
-                _sorted[item] = config["upgrade"][item]
-
-            for item in _sorted:
-                if "manpower" in config["upgrade"][item]:
-                    if config["upgrade"][item]["manpower"] != 0:
-                        manpower = f'`Manpower:` {config["upgrade"][item]["manpower"]}'
-                    else:
-                        manpower = ""
-                else:
-                    manpower = ""
-                stock = f'{config["players"][ctx.author.id]["upgrade"][item]}/{config["players"][ctx.author.id]["maxupgrade"][item]}' if config[
-                    "players"][ctx.author.id]["maxupgrade"][item] != None else f'{config["players"][ctx.author.id]["upgrade"][item]}/Not limited'
-                msg += f'`{item}` {stock} `Cost:` {config["upgrade"][item]["cost"]:,}{config["currency_symbol"]} {manpower}\n'.replace(
-                    ",", " ")
-                if index == 30:
-                    embed = discord.Embed(
-                        colour=discord.Colour.from_rgb(255, 255, 0),
-                        description=msg
-                    )
-                    embed.set_author(name="Shop", icon_url=bot.user.avatar_url)
-                    e_list.append(embed)
-                    msg = ""
-                    index = 1
-                else:
-                    index += 1
-            embed = discord.Embed(
-                colour=discord.Colour.from_rgb(255, 255, 0),
-                description=msg
-            )
-            embed.set_author(name="Shop", icon_url=bot.user.avatar_url)
-            e_list.append(embed)
-
-            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx)
-            paginator.remove_reactions = True
-            await paginator.run(e_list)
-        except:
-            print(traceback.format_exc())
-            await ctx.send(traceback.format_exc())
-
 
 class PlayerShop(commands.Cog):
     "Sell stuff, buy stuff or do whatever your heart desires"
@@ -2039,6 +2133,12 @@ class PlayerShop(commands.Cog):
                 await ctx.send(embed=embed)
 
             if not item in config["players"][ctx.author.id]["inventory"]:
+                _placeholder = difflib.get_close_matches(
+                    item, config["players"][ctx.author.id]["inventory"].keys())
+                if await confirm(ctx, f"Not found in shop - closest match: {_placeholder}"):
+                    item = _placeholder[0] if _placeholder != [] else item
+
+            if not item in config["players"][ctx.author.id]["inventory"]:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
                     description=f"{item} not found in your inventory"
@@ -2074,6 +2174,12 @@ class PlayerShop(commands.Cog):
                                  icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
                 return
+
+            if not item in config["players"][user.id]["player_shop"]:
+                _placeholder = difflib.get_close_matches(
+                    item, config["players"][user.id]["player_shop"].keys())
+                if await confirm(ctx, f"Not found in shop - closest match: {_placeholder}"):
+                    item = _placeholder[0] if _placeholder != [] else item
 
             try:
                 cost = config["players"][user.id]["player_shop"][item]
@@ -2120,6 +2226,12 @@ class PlayerShop(commands.Cog):
     @commands.command(name="player-retrieve", help="Cancel shop listing of item: player-retrieve  <item: str>")
     async def player_retrieve(self, ctx: Context, *, item: str):
         try:
+            if not item in config["players"][ctx.author.id]["player_shop"]:
+                _placeholder = difflib.get_close_matches(
+                    item, config["players"][ctx.author.id]["player_shop"].keys())
+                if await confirm(ctx, f"Not found in shop - closest match: {_placeholder}"):
+                    item = _placeholder[0] if _placeholder != [] else item
+
             try:
                 config["players"][ctx.author.id]["player_shop"][item]
             except KeyError:
@@ -2324,6 +2436,18 @@ class Inventory(commands.Cog):
                 embed.set_author(
                     name="Recycle", icon_url=bot.user.avatar_url)
                 await ctx.send(embed=embed)
+        except:
+            print(traceback.format_exc())
+            await ctx.send(traceback.format_exc())
+
+    @commands.command(name="recycle-all", help="Recycle item: recycle-all <rarity: str>")
+    async def recycle_all(self, ctx: Context, rarity: str = "common"):
+        try:
+            items = [item for item in config["players"]
+                     [ctx.author.id]["inventory"] if config["players"]
+                     [ctx.author.id]["inventory"][item]["rarity"] == rarity]
+
+            await ctx.send(items)
         except:
             print(traceback.format_exc())
             await ctx.send(traceback.format_exc())
@@ -2810,8 +2934,9 @@ class Expeditions(commands.Cog):
                     await ctx.send(embed=embed)
 
                     index = 1
+                    extname = name
                     while name in config["players"][ctx.author.id]["inventory"]:
-                        name = name + f" ({index})"
+                        name = extname + f" ({index})"
                         index += 1
                         logging.debug(
                             f"Item found in inventory! Trying suffix ({index})")
