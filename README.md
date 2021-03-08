@@ -112,6 +112,7 @@ execute                 Execute python code: execute <command: str> [command]...
 json-encode             Encode string to yaml format: json-encode <value: str>
 eval                 Execute python code: eval <command: str> [command]...
 reload                  Reload members and roles: reload
+dm                      Send dm to member: dm <member: discord.Member> <content: str>
 ```
 
 ### 2.4. <a name='Essentials'></a>Essentials
