@@ -110,7 +110,7 @@ asyncs-on-hold          Async events currently on hold: asyncs-on-hold
 dm                      Send dm to member: dm <member: discord.Member> <content: str>
 execute                 Execute python code: execute <command: str> [command]...
 json-encode             Encode string to yaml format: json-encode <value: str>
-python3                 Execute python code: python3 <command: str> [command]...
+eval                 Execute python code: eval <command: str> [command]...
 reload                  Reload members and roles: reload
 dm                      Send dm to member: dm <member: discord.Member> <content: str>
 ```
@@ -131,7 +131,7 @@ time                    Shows formated time: time
 ```plain
 add-income              Add income: add-income <role: discord.Role> <value: integer>
 income                  Shows your income: income
-income-calc             Calculate income: income <populace>
+income-calc             Calculate income: income-calc <population: int>
 income-lb               Show da income leaderboard: l, lb, leaderboard
 remove-income           Remove income: remove-income <role: discord.Role> <value: integer>
 ```
@@ -192,7 +192,7 @@ skillpoints             Number of your skillpoints: skillpoints
 
 ```plain
 add-item                Add item to database: add-item [--maxupgrade MAXUPGRADE] [--income INCOME] [--manpower MANPOWER] [--require REQUIRE] name cost
-bravo-six-going-dark    Deletes messages: bravo-six-going-dark <messages: int>
+cleanup                 Deletes messages: cleanup <messages: int = 100>
 deltatime               Sets time between allowed !work commands: deltatime <value: int>
 on-join-dm              Set message to be send when player joins: on-join-dm <message: str>
 prefix                  Change prefix of da bot: prefix <prefix: str>

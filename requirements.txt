@@ -1,4 +1,13 @@
-discord.py==1.4.2
+# Base
+discord.py
+
+# Prettify
 discord-pretty-help
 DiscordUtils
+
+# Timezones
 pytz
+
+# For sanity check
+pynput
+pyautogui
