@@ -744,12 +744,12 @@ class Money(commands.Cog):
                         f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}]")
                     embed = discord.Embed(
                         colour=discord.Colour.from_rgb(255, 255, 0),
-                        description=f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus: `{config['players'][ctx.author.id]['stats']['stewardship']*config['stewardship_rate']*100}%`".replace(",", " ")
+                        description=f"✅ <@{ctx.author.id}> worked and got `{int(timedelta*income*rate):,} {config['currency_symbol']}`\nNext available at {datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}\nIncome boosted: `{income_boost:,}{config['currency_symbol']}`\nIncome multiplier `{income_multiplier}`\nStewardship bonus: `{config['players'][ctx.author.id]['stats']['stewardship']*config['stewardship_rate']}%`".replace(",", " ")
                     )
                     embed.set_author(name="Work", icon_url=bot.user.avatar_url)
                     await ctx.send(embed=embed)
                     logging.debug(
-                        f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}], symbol={config['currency_symbol']}, next={datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}, boost={income_boost}, multiplier={income_multiplier}, stewardship={config['players'][ctx.author.id]['stats']['stewardship']*config['stewardship_rate']*100}%")
+                        f"{ctx.author.display_name} ■ {ctx.author.id} is working [timedelta={timedelta}, rate={rate}], symbol={config['currency_symbol']}, next={datetime.datetime.fromtimestamp(int(config['players'][ctx.author.id]['last-work'] + config['deltatime']),tz=pytz.timezone('Europe/Prague')).time()}, boost={income_boost}, multiplier={income_multiplier}, stewardship={config['players'][ctx.author.id]['stats']['stewardship']*config['stewardship_rate']}%")
             else:
                 embed = discord.Embed(
                     colour=discord.Colour.from_rgb(255, 255, 0),
